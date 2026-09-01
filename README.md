@@ -1,200 +1,299 @@
-Welcome to your new TanStack Start app!
+# Forge
 
-# Getting Started
+## AI writes the code. Forge proves it works.
 
-To run this application:
+Forge is an evidence-first verification layer for AI-built web applications.
+
+Give Forge a deployed URL. It explores the application in a real browser,
+discovers the user journeys that matter, executes them, reproduces the failures,
+and produces findings that are backed by screenshots, console output, network
+errors, and an auditable trace of what the agent did. Then it can re-run the
+exact reproduction against a fixed build and tell you whether the fix worked.
+
+Built with Solari browsers, Cloudflare Workers, D1, R2, Durable Objects,
+Workers AI, Drizzle ORM, TanStack Start, Cloudflare Kumo, and Tailwind CSS v4.
+
+---
+
+## Why
+
+Generating software got cheap. Verifying it did not.
+
+An agent can produce a working-looking application in minutes, and the bottleneck
+moves to the question nobody has automated: *does it actually work?* Unit tests
+check the code the author thought about. Forge checks the application the way a
+user meets it, from the outside, and refuses to report anything it cannot show
+you the evidence for.
+
+The rule the whole system is built around:
+
+> **No evidence, no high-confidence bug.**
+
+---
+
+## Architecture
+
+```text
+                          FORGE
+
+                   ┌──────────────────┐
+                   │  TanStack Start  │
+                   │  Web / Console   │
+                   └────────┬─────────┘
+                            │  server functions (typed RPC)
+                   ┌────────▼─────────┐
+                   │   Worker entry   │
+                   │  auth · API · UI │
+                   └────────┬─────────┘
+                            │
+             ┌──────────────┼───────────────┐
+             ▼              ▼               ▼
+      Run service     Agent runtime    Evidence store
+             │              │               │
+             ▼              ▼               ▼
+     RunSessionDO     Explorer            R2
+     (live state,     Operator
+      SSE, cancel)    Judge
+             │              │
+             ▼              ▼
+            D1        Execution layer
+                            │
+                  ┌─────────┴─────────┐
+                  ▼                   ▼
+           Solari browser        HTTP executor
+             (CDP over WS)        (HTMLRewriter)
+```
+
+Three clean layers:
+
+| Layer | Owns |
+|---|---|
+| **Intelligence** | Explorer, Operator, Judge, prompts, model routing |
+| **Execution** | Solari browser sessions, page observation, actions |
+| **Control plane** | Workers, D1, R2, Durable Objects, Workers AI, auth, budgets |
+
+The model proposes. Application code decides.
+
+### Key decisions
+
+**Solari is driven over raw CDP, not through its SDK.** `@solarisdk/browser`
+bundles a Playwright fork that needs Node and raw sockets, so it cannot run on
+Workers. Solari exposes each session's CDP endpoint and Workers can hold an
+outbound WebSocket, so `src/server/execution/` speaks CDP directly. The whole
+control plane stays on Workers with no extra hop.
+
+**There is a working fallback.** Without a `SOLARI_API_KEY`, runs use an HTTP
+executor built on `HTMLRewriter`: real requests, real status codes, real form
+submissions, real cookies. It cannot run JavaScript, so it will miss
+client-rendered failures. Which executor produced a finding is recorded on the
+run and shown in the UI, because a finding is only as good as the fidelity
+behind it.
+
+**The Judge cannot overrule the measurement.** Reproduction rate, severity, and
+classification are computed by deterministic rules in `src/server/domain/`. The
+model writes the narrative and may propose a root cause; it cannot promote a
+flaky failure to a confirmed bug. Every model response is schema-validated
+before it reaches the database.
+
+**The run engine lives in a Durable Object.** One instance per run owns the
+execution loop, the event sequence, the cancellation flag, and the set of
+clients watching live. HTTP requests never execute a run inline; they return a
+run id and the client subscribes over SSE.
+
+**Drizzle is the schema, not just the query builder.** `src/server/db/schema.ts`
+defines every table once, and three things read it: drizzle-kit generates the
+migrations from it, Better Auth's Drizzle adapter resolves its own tables
+through it, and Forge's queries are typed by it. Renaming a column is a type
+error rather than a runtime surprise. Enum-shaped text columns carry `$type<>()`
+so the row types match the API contracts exactly, which is why the UI can
+exhaustively switch on a run status or a severity.
+
+**One Worker, real internal boundaries.** `services/*` in the design document
+map to modules under `src/server/`, not to separate Workers. Splitting them out
+would be microservice theatre at this size; the boundaries are enforced by
+module structure and would survive being pulled apart when there is a reason to.
+
+---
+
+## Demo
+
+The repository ships a deliberately broken application at `/demo` ("Northbeam"),
+so the entire loop is demonstrable without depending on a third-party site.
+
+Seeded defects:
+
+1. Applying a coupon at checkout returns 500.
+2. Inviting a teammate outside the org domain returns 500.
+3. The Pricing link in the navigation points at a page that was renamed.
+
+The 60-second demo:
+
+1. Sign in as a guest.
+2. Create a project pointed at your own `/demo` URL, or press **Use the demo app**.
+3. Watch the run: journeys discovered, executed, failures reproduced.
+4. Open a finding. Read the steps, the network evidence, the reproduction count.
+5. Set `FORGE_DEMO_FIXED="1"` in `.dev.vars` to repair the defects.
+6. Press **Verify fix** on the finding.
+7. The exact journey re-runs and passes. The finding is marked resolved.
+
+---
+
+## Quick start
 
 ```bash
 pnpm install
+cp .dev.vars.example .dev.vars     # then set BETTER_AUTH_SECRET
+pnpm db:migrate                    # applies migrations to the local D1
 pnpm dev
 ```
 
-# Building For Production
+Open http://localhost:3000 and press **Continue as guest**.
 
-To build this application for production:
+No Cloudflare login, no Solari key, and no model provider are required to run
+the whole loop locally. Forge degrades honestly: the HTTP executor replaces the
+browser, and heuristic agents replace the model.
+
+To run against a real browser, add a Solari key to `.dev.vars`:
 
 ```bash
-pnpm build
+SOLARI_API_KEY="sk_..."
 ```
 
-## Styling
+Runs then get JavaScript execution, screenshots, console and network capture,
+and a session replay link on the finding.
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+---
 
-### Removing Tailwind CSS
+## Development
 
-If you prefer not to use Tailwind CSS:
-
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Remove `@tailwindcss/vite` and `tailwindcss` from `package.json`
-
-
-## Deploy to Cloudflare Workers
-
-This project uses the Cloudflare Vite plugin (configured in `vite.config.ts`) and `wrangler.jsonc`:
-
-1. Install Wrangler: `npm install -g wrangler`
-2. Authenticate: `wrangler login`
-3. Deploy: `npx wrangler deploy`
-
-For production env vars, run `wrangler secret put MY_VAR` for each secret listed in `.env.example`. Public (non-secret) vars go in `wrangler.jsonc` under `vars`.
-
-KV, D1, R2, and Durable Object bindings are configured in `wrangler.jsonc` — see https://developers.cloudflare.com/workers/wrangler/configuration/.
-
-
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
+```bash
+pnpm typecheck     # tsc --noEmit
+pnpm test          # unit tests
+pnpm build         # client + worker bundles
+pnpm check         # all three
 ```
 
-Then anywhere in your JSX you can use it like so:
+### Changing the schema
 
-```tsx
-<Link to="/about">About</Link>
+`src/server/db/schema.ts` is the single source of truth. Edit it, then:
+
+```bash
+pnpm db:generate           # drizzle-kit writes the migration
+pnpm db:migrate            # apply to the local D1
+pnpm db:migrate:remote     # apply to the deployed D1
 ```
 
-This will create a link that will navigate to the `/about` route.
+Migrations land in `infrastructure/migrations`, which is the directory
+`wrangler d1 migrations apply` reads, so there is one migration history rather
+than two. There is deliberately no `drizzle-kit push` script: pushing would
+leave the deployed database in a state no migration describes.
 
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
+### Layout
 
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
+```text
+src/
+  routes/                 TanStack Start file routes (pages, API, demo app)
+  components/             UI: shell, status vocabulary, evidence, live stream
+  server/
+    contracts/            zod schemas shared across every boundary
+    db/                   Drizzle schema and client (source of truth for D1)
+    domain/               run state machine, classification, scoring, budgets
+    security/             target-URL validation (SSRF), repository URL policy
+    execution/            BrowserExecutor interface, Solari CDP, HTTP fallback
+    agent/                Explorer, Operator, Judge, prompts, model router
+    evidence/             R2 artifact store and metadata
+    runs/                 repository, run service, engine, RunSessionDO
+    demo/                 the deliberately broken fixture application
+    auth.ts               Better Auth (email/password + anonymous)
+    api.ts                typed server functions the UI calls
+infrastructure/migrations/
+tests/unit/
 ```
 
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
+### Cloudflare resources
 
-## Server Functions
+Before deploying, create the resources and paste the ids into `wrangler.jsonc`:
 
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
+```bash
+wrangler d1 create forge
+wrangler r2 bucket create forge-evidence
 
-```tsx
-import { createServerFn } from '@tanstack/react-start'
+wrangler secret put BETTER_AUTH_SECRET
+wrangler secret put SOLARI_API_KEY        # optional
 
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
-}
+pnpm db:migrate:remote
+pnpm deploy
 ```
 
-## API Routes
+Keep development, staging, and production on separate D1 databases, R2 buckets,
+and Solari keys. A development run must never be able to reach production data.
 
-You can create API routes by using the `server` property in your route definitions:
+---
 
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
+## Security
 
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
+**Target URLs are validated before every navigation.** A user-supplied URL that
+a Worker will fetch is an SSRF primitive. `src/server/security/target-url.ts`
+rejects non-HTTP protocols, loopback, private and carrier-NAT ranges,
+link-local (including `169.254.169.254`), unique-local IPv6, internal hostname
+suffixes, and embedded credentials. Loopback is permitted only when
+`FORGE_ENV=development`, so the bundled demo can be verified locally.
 
-## Data Fetching
+**Page and repository content is data, never instruction.** Every prompt that
+reads untrusted material states this explicitly, and the tool layer enforces it
+regardless of what the model decides. A page containing "ignore previous
+instructions" changes what Forge reports, not what Forge is permitted to do.
 
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
+**Every read is ownership-scoped.** `assertProjectAccess`, `assertRunAccess`,
+and `assertFindingAccess` are the only doors to the data. R2 objects are never
+public; artifacts are served through an authenticated route that re-checks the
+owning run.
 
-For example:
+**Runs are bounded.** Journeys, browser actions, model calls, reproduction
+attempts, evidence size, and wall clock are all capped. Sessions are released in
+a `finally`, including on cancellation, because a leaked browser session bills
+for as long as it lives. Expensive operations accept an idempotency key so a
+retried request cannot create a second paid session.
 
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
+**Anonymous accounts are real accounts.** The anonymous plugin creates an owned
+user row, so every authorization check behaves identically for guests. Signing
+up later migrates their projects across rather than stranding them.
 
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
+**Test with synthetic data.** The Operator fills forms with obviously synthetic
+values and never real credentials. Point Forge at previews and staging, not at
+production with customer data.
 
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
+---
 
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
+## Evaluation
 
+The seeded demo application is a deterministic target: the same run should find
+the same defects with the same reproduction counts every time. That is what
+makes it possible to tell an agent regression from ordinary flakiness, and it is
+where an evaluation harness belongs next.
 
-# Demo files
+Unit tests currently cover the parts that make decisions: the run state machine,
+failure classification, severity and confidence scoring, journey ranking, budget
+enforcement, target-URL safety, and model-output parsing.
 
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
+---
 
+## Roadmap
 
-# Learn More
+Shipped:
 
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
+- Guest and email accounts, projects, runs, live progress
+- Journey discovery, execution, failure classification, reproduction
+- Evidence-backed findings, agent trace, artifact storage
+- Verify fix
 
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+Next, roughly in order:
+
+- Repository investigation in a Solari sandbox, connecting a runtime failure to
+  the source that caused it
+- An evaluation harness over the seeded fixtures, with false-positive rate as a
+  first-class metric
+- GitHub App integration: pull request to verification to check
+- A CLI, then scheduled regression monitoring
+- Proposed patches, applied in a disposable sandbox and verified before a PR is
+  ever opened

@@ -1,45 +1,63 @@
 /**
- * For more details on how to configure Wrangler, refer to:
- * https://developers.cloudflare.com/workers/wrangler/configuration/
+ * Forge - Cloudflare Worker configuration.
+ *
+ * One Worker hosts the TanStack Start app, the JSON API, and the run engine
+ * Durable Object. Internal boundaries live in `src/server/*` rather than in
+ * separate Workers: see docs/architecture.md for why.
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "forge",
 	"compatibility_date": "2025-09-02",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"main": "@tanstack/react-start/server-entry",
-	"observability": {
-		"enabled": true
+	"compatibility_flags": ["nodejs_compat"],
+	"main": "src/server.ts",
+	"observability": { "enabled": true },
+	"upload_source_maps": true,
+
+	"vars": {
+		"FORGE_ENV": "development",
+		"APP_URL": "http://localhost:3000"
 	},
-	"upload_source_maps": true
-	/**
-	 * Smart Placement
-	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
-	 */
-	// "placement": {  "mode": "smart" }
-	/**
-	 * Bindings
-	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
-	 * databases, object storage, AI inference, real-time communication and more.
-	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
-	 */
-	/**
-	 * Environment Variables
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
-	 * Note: Use secrets to store sensitive data.
-	 * https://developers.cloudflare.com/workers/configuration/secrets/
-	 */
-	// "vars": {  "MY_VARIABLE": "production_value" }
-	/**
-	 * Static Assets
-	 * https://developers.cloudflare.com/workers/static-assets/binding/
-	 */
-	// "assets": {  "directory": "./public/",  "binding": "ASSETS" }
-	/**
-	 * Service Bindings (communicate between multiple Workers)
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
-	 */
-	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "forge",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "infrastructure/migrations"
+		}
+	],
+
+	"r2_buckets": [
+		{
+			"binding": "EVIDENCE",
+			"bucket_name": "forge-evidence"
+		}
+	],
+
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RUN_SESSION",
+				"class_name": "RunSessionDO"
+			}
+		]
+	},
+
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["RunSessionDO"]
+		}
+	],
+
+
+	"ai": { "binding": "AI" },
+
+	"analytics_engine_datasets": [
+		{
+			"binding": "ANALYTICS",
+			"dataset": "forge_runs"
+		}
+	]
 }

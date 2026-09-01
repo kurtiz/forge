@@ -1,0 +1,29 @@
+# Local development secrets. Copy to .dev.vars; never commit the real file.
+
+# Required. Any long random string. Generate one with:
+#   openssl rand -base64 32
+BETTER_AUTH_SECRET="replace-me-with-32-or-more-random-characters"
+
+# Marks this as a development environment. Allows verifying loopback targets,
+# so the bundled demo app at http://localhost:3000/demo can be used end to end.
+FORGE_ENV="development"
+
+# Public origin. Must match the port the dev server actually binds to.
+# Leave it empty to infer it from the request instead; Better Auth logs a
+# warning in that mode but works.
+APP_URL="http://localhost:3000"
+
+# Optional. Without it, runs use the HTTP executor: real requests and real
+# status codes, but no JavaScript, no screenshots, and no session replay.
+# SOLARI_API_KEY="sk_..."
+
+# Optional. Point the model router at an OpenAI-compatible endpoint, typically
+# a Cloudflare AI Gateway. Without it, Forge uses Workers AI when the binding is
+# reachable and falls back to its heuristic agents when it is not.
+# AI_GATEWAY_URL="https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/openai"
+# AI_GATEWAY_KEY="sk-..."
+# AI_GATEWAY_MODEL="gpt-4o-mini"
+
+# Repairs the seeded defects in the bundled demo app. Flip this to "1" to make
+# "Verify fix" pass on a finding you already have.
+# FORGE_DEMO_FIXED="1"
