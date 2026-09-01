@@ -86,6 +86,70 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Headings set their own line breaks; body copy avoids orphans. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/*
+ * Screenshot edge. Kumo's hairline is opaque on both themes, so around a dark
+ * screenshot in light mode it reads as a halo rather than a boundary. A
+ * translucent pure black/white outline darkens or lightens the edge it sits on
+ * instead of painting a band over it. Inset so it hugs the clipped corner.
+ */
+.image-frame {
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+:root[data-mode="dark"] .image-frame {
+  outline-color: oklch(1 0 0 / 0.1);
+}
+
+/*
+ * Press feedback. Kumo buttons transition colour but have no active state of
+ * their own, so every control in the product feels inert under the cursor.
+ * Unlayered, so it wins over Tailwind's `transition-colors` utility without
+ * !important; the property list restates Kumo's so nothing is dropped.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  [data-kumo-component="Button"] {
+    transition-property: color, background-color, border-color,
+      text-decoration-color, fill, stroke, scale;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  [data-kumo-component="Button"]:not(:disabled):active {
+    scale: 0.96;
+  }
+}
+
+/*
+ * Touch target for icon-only controls in the 56px top bar. Extends vertically
+ * only: the bar's `gap-2` is 8px, and widening the target would push it into
+ * the neighbouring control's.
+ */
+.hit-44 {
+  position: relative;
+}
+
+.hit-44::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
 /*
  * Blueprint grid. Used only behind the landing hero and the empty console, as
  * a texture that says "instrument", never underneath dense data.

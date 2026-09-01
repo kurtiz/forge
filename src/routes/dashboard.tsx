@@ -42,7 +42,7 @@ function Dashboard() {
           actions={
             projects.length > 0 ? (
               <Link to="/projects/new" className="no-underline">
-                <Button variant="primary" icon={<PlusIcon size={15}/>}>
+                <Button variant="primary" icon={<PlusIcon size={14}/>}>
                   New project
                 </Button>
               </Link>
@@ -60,7 +60,7 @@ function Dashboard() {
               contents={
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   <Link to="/projects/new" className="no-underline">
-                    <Button variant="primary" icon={<PlusIcon size={15}/>}>
+                    <Button variant="primary" icon={<PlusIcon size={14}/>}>
                       Add a project
                     </Button>
                   </Link>
@@ -103,7 +103,7 @@ function Dashboard() {
                     <Link
                       to="/projects/$projectId"
                       params={{ projectId: project.id }}
-                      className="flex items-center gap-4 py-3 px-4 rounded-lg no-underline transition-colors hover:bg-kumo-tint"
+                      className="flex items-center gap-4 py-3 no-underline transition-colors hover:bg-kumo-tint"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-kumo-strong">
@@ -132,7 +132,7 @@ function Dashboard() {
                       <Link
                         to="/runs/$runId"
                         params={{ runId: run.id }}
-                        className="flex flex-wrap items-center px-4 rounded-lg gap-x-4 gap-y-1 py-3 no-underline transition-colors hover:bg-kumo-tint"
+                        className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3 no-underline transition-colors hover:bg-kumo-tint"
                       >
                         <RunStatusPill status={run.status}/>
                         <span className="text-sm font-medium text-kumo-strong">

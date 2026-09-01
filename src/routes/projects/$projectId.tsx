@@ -96,13 +96,13 @@ function ProjectPage() {
                 aria-label="Delete project"
                 onClick={remove}
               >
-                <TrashIcon size={15} />
+                <TrashIcon size={16} />
               </Button>
               <Button
                 variant="primary"
                 loading={busy}
                 onClick={run}
-                icon={<PlayIcon size={15} weight="fill" />}
+                icon={<PlayIcon size={14} weight="fill" />}
               >
                 Run verification
               </Button>

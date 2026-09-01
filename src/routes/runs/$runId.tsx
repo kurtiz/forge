@@ -111,7 +111,7 @@ function RunPage() {
             <>
               {replayUrl ? (
                 <a href={replayUrl} target="_blank" rel="noreferrer" className="no-underline">
-                  <Button variant="secondary" icon={<FilmSlateIcon size={15}/>}>
+                  <Button variant="secondary" icon={<FilmSlateIcon size={14}/>}>
                     Watch replay
                   </Button>
                 </a>
@@ -121,7 +121,7 @@ function RunPage() {
                   variant="secondary-destructive"
                   loading={stopping}
                   onClick={stop}
-                  icon={<StopCircleIcon size={15}/>}
+                  icon={<StopCircleIcon size={14}/>}
                 >
                   Stop run
                 </Button>
@@ -149,8 +149,7 @@ function RunPage() {
                   <Link
                     to="/findings/$findingId"
                     params={{ findingId: finding.id }}
-                    className="flex flex-wrap items-center px-4 rounded-lg gap-x-4 gap-y-2 py-3.5
-                    no-underline transition-colors hover:bg-kumo-tint"
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 no-underline transition-colors hover:bg-kumo-tint"
                   >
                     <SeverityPill severity={finding.severity}/>
                     <span className="min-w-0 flex-1 text-sm font-medium text-kumo-strong">
@@ -289,7 +288,7 @@ function PhaseRail({ status }: { status: Parameters<typeof phaseIndex>[0] }) {
               }}
             />
             <div
-              className={`mt-2 truncate text-xs ${
+              className={`mt-2 truncate text-xs transition-colors ${
                 active
                   ? "font-medium text-kumo-strong"
                   : done
@@ -331,11 +330,20 @@ function Timeline({
   }>
   live: boolean
 }) {
-  const endRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
 
+  // Follow the tail, but only while the reader is already at it.
+  // `scrollIntoView` walks up and scrolls whichever ancestor it has to,
+  // including the document, so a streaming run was pulling the findings above
+  // out of view on every event. Scrolling the container directly keeps the
+  // rest of the page still. The threshold absorbs the row that just landed.
   useEffect(() => {
     if (!live) return;
-    endRef.current?.scrollIntoView({ block: "nearest" });
+    const box = boxRef.current;
+    if (!box) return;
+    const fromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+    if (fromBottom > 96) return;
+    box.scrollTop = box.scrollHeight;
   }, [events.length, live]);
 
   if (events.length === 0) {
@@ -347,7 +355,7 @@ function Timeline({
   }
 
   return (
-    <div className="max-h-[26rem] overflow-y-auto pr-1">
+    <div ref={boxRef} className="max-h-[26rem] overflow-y-auto pr-1">
       <ol className="m-0 list-none p-0">
         {events.map((event) => (
           <li key={event.id} className="rail relative flex gap-3 py-1.5 pl-5">
@@ -370,7 +378,6 @@ function Timeline({
           </li>
         ))}
       </ol>
-      <div ref={endRef}/>
     </div>
   );
 }

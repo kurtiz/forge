@@ -111,7 +111,7 @@ function FindingPage() {
                   variant="primary"
                   loading={busy === 'verify'}
                   onClick={runFixCheck}
-                  icon={<SealCheckIcon size={15} />}
+                  icon={<SealCheckIcon size={14} />}
                 >
                   Verify fix
                 </Button>

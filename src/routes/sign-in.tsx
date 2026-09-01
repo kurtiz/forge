@@ -116,7 +116,7 @@ function SignIn() {
                 loading={busy === 'guest'}
                 disabled={busy !== null}
                 onClick={continueAsGuest}
-                icon={<UserCircleDashedIcon size={17} />}
+                icon={<UserCircleDashedIcon size={16} />}
               >
                 Continue as guest
               </Button>

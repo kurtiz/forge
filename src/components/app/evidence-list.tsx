@@ -55,7 +55,7 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
                   src={`/api/evidence/${shot.id}`}
                   alt={shot.label}
                   loading="lazy"
-                  className="block aspect-[16/10] w-full bg-kumo-recessed object-cover object-top"
+                  className="image-frame block aspect-[16/10] w-full bg-kumo-recessed object-cover object-top"
                 />
                 <span className="block truncate px-2.5 py-2 text-xs text-kumo-subtle">
                   {shot.label}

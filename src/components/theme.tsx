@@ -71,8 +71,8 @@ export function ThemeToggle() {
   return (
     <Button
       variant="ghost"
-      size="sm"
       shape="square"
+      className="hit-44"
       aria-label={`Theme: ${mode}. Switch to ${NEXT[mode]}.`}
       onClick={() => {
         const next = NEXT[mode]
@@ -81,7 +81,7 @@ export function ThemeToggle() {
         localStorage.setItem('forge-theme', next)
       }}
     >
-      <Icon size={15} />
+      <Icon size={16} />
     </Button>
   )
 }
