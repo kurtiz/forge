@@ -52,6 +52,11 @@ export type FixAttemptRow = typeof tables.fixAttempts.$inferSelect
 
 /* -------------------------------------------------------------- projects */
 
+/**
+ * Row to contract. `authPasswordEncrypted` is deliberately not carried across:
+ * the ciphertext has no field in `Project`, so it cannot escape through an API
+ * response. Only the run engine reads it, via `readProjectCredentials`.
+ */
 const toProject = (r: ProjectRow): Project => ({
   id: r.id,
   userId: r.userId,
@@ -59,6 +64,9 @@ const toProject = (r: ProjectRow): Project => ({
   targetUrl: r.targetUrl,
   repoUrl: r.repoUrl,
   goal: r.goal,
+  authLoginPath: r.authLoginPath,
+  authUsername: r.authUsername,
+  hasCredentials: Boolean(r.authPasswordEncrypted),
   createdAt: r.createdAt,
   updatedAt: r.updatedAt,
 })
@@ -69,6 +77,9 @@ export async function createProject(input: {
   targetUrl: string
   repoUrl: string | null
   goal: string | null
+  authLoginPath?: string | null
+  authUsername?: string | null
+  authPasswordEncrypted?: string | null
 }): Promise<Project> {
   const at = nowIso()
   const [row] = await db()
@@ -77,6 +88,50 @@ export async function createProject(input: {
     .returning()
 
   return toProject(row)
+}
+
+export type StoredCredentials = {
+  loginPath: string
+  username: string
+  passwordEncrypted: string
+  profileId: string | null
+}
+
+/**
+ * The one path that reads the stored ciphertext.
+ *
+ * Separate from `toProject` on purpose: a caller has to ask for credentials by
+ * name, so they cannot be returned by accident. Called only from the run
+ * service, and decrypted only inside the run Durable Object.
+ */
+export async function readProjectCredentials(
+  projectId: string,
+): Promise<StoredCredentials | null> {
+  const [row] = await db()
+    .select()
+    .from(tables.projects)
+    .where(eq(tables.projects.id, projectId))
+    .limit(1)
+
+  if (!row?.authUsername || !row.authPasswordEncrypted) return null
+
+  return {
+    loginPath: row.authLoginPath ?? '/login',
+    username: row.authUsername,
+    passwordEncrypted: row.authPasswordEncrypted,
+    profileId: row.authProfileId,
+  }
+}
+
+/** Records the Solari profile that now holds this project's signed-in state. */
+export async function saveProjectProfileId(
+  projectId: string,
+  profileId: string,
+): Promise<void> {
+  await db()
+    .update(tables.projects)
+    .set({ authProfileId: profileId, updatedAt: nowIso() })
+    .where(eq(tables.projects.id, projectId))
 }
 
 export async function listProjects(userId: string): Promise<Project[]> {

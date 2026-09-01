@@ -111,11 +111,6 @@ const HIGH_VALUE = [
   'payment',
   'purchase',
   'billing',
-  'sign up',
-  'signup',
-  'register',
-  'sign in',
-  'login',
   'invite',
   'create',
   'upload',
@@ -127,19 +122,68 @@ const HIGH_VALUE = [
 const LOW_VALUE = ['theme', 'about', 'legal', 'privacy', 'terms', 'changelog']
 
 /**
+ * Getting through the door is high value when Forge cannot yet - and a waste of
+ * budget once it already has. Scored separately from `HIGH_VALUE` so the sign of
+ * the adjustment can flip.
+ */
+const AUTH_VALUE = [
+  'sign up',
+  'signup',
+  'sign in',
+  'signin',
+  'log in',
+  'login',
+  'register',
+  // The phrasing `heuristicJourneys` mints from link text.
+  'create an account',
+  'create account',
+  'authenticate',
+]
+
+/** Hyphens and underscores collapse so "Sign-in" matches the keyword "sign in". */
+function normaliseKeywordText(text: string): string {
+  return text.toLowerCase().replace(/[-_]+/g, ' ')
+}
+
+/**
+ * Whether a journey is itself about getting through the door.
+ *
+ * Used both to stop spending budget on the login form once Forge is signed in,
+ * and to tell an auth wall apart from a sign-up page a journey meant to reach.
+ */
+export function isAuthJourney(name: string, goal: string): boolean {
+  const haystack = normaliseKeywordText(`${name} ${goal}`)
+  return AUTH_VALUE.some((keyword) => haystack.includes(keyword))
+}
+
+/**
  * Re-score model-proposed priorities against business-value keywords so a
  * confident-but-wrong model cannot spend the whole budget on a settings page.
  */
 export function rankJourneys(
   journeys: readonly DiscoveredJourney[],
   limit: number,
+  options: { authenticated?: boolean } = {},
 ): DiscoveredJourney[] {
+  const matches = (journey: DiscoveredJourney, keywords: readonly string[]) => {
+    const haystack = normaliseKeywordText(`${journey.name} ${journey.goal}`)
+    return keywords.some((keyword) => haystack.includes(keyword))
+  }
+
   return journeys
+    .filter((j) => {
+      // Dropped, not demoted. Once Forge has signed in, the login form is a
+      // door it has already walked through: a "Sign in" journey can only pass
+      // vacuously, and a demoted one still runs whenever the list is short.
+      if (options.authenticated && matches(j, AUTH_VALUE)) return false
+      return true
+    })
     .map((j) => {
-      const haystack = `${j.name} ${j.goal}`.toLowerCase()
       let priority = j.priority
-      if (HIGH_VALUE.some((k) => haystack.includes(k))) priority += 0.15
-      if (LOW_VALUE.some((k) => haystack.includes(k))) priority -= 0.2
+      if (matches(j, HIGH_VALUE)) priority += 0.15
+      // Getting through the door is worth the budget while Forge cannot.
+      if (matches(j, AUTH_VALUE)) priority += 0.15
+      if (matches(j, LOW_VALUE)) priority -= 0.2
       return { ...j, priority: Math.max(0, Math.min(1, Number(priority.toFixed(2)))) }
     })
     .sort((a, b) => b.priority - a.priority)

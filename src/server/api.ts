@@ -20,7 +20,13 @@ import {
 } from './contracts'
 import { currentUser, requireUser, type SessionUser } from './auth'
 import { plannedExecutorKind } from './execution'
-import { assertSafeTargetUrl, normaliseRepoUrl } from './security'
+import {
+  assertSafeTargetUrl,
+  CredentialError,
+  encryptCredential,
+  normaliseLoginPath,
+  normaliseRepoUrl,
+} from './security'
 import * as repo from './runs/repository'
 import { cancelRun, startRun } from './runs/service'
 import { listRunEvidence } from './evidence/store'
@@ -97,12 +103,30 @@ export const createProject = createServerFn({ method: 'POST' })
     const target = assertSafeTargetUrl(data.targetUrl)
     const repoUrl = normaliseRepoUrl(data.repoUrl)
 
+    // Credentials are optional, but a username without a password (or the
+    // reverse) is a half-configured login that would fail confusingly at run
+    // time, so it is rejected here rather than discovered later.
+    const wantsAuth = Boolean(data.authUsername || data.authPassword)
+    if (wantsAuth && !(data.authUsername && data.authPassword)) {
+      throw new CredentialError(
+        'A test account needs both a username and a password.',
+      )
+    }
+
+    // Encrypted at the boundary: the plaintext never reaches a query.
+    const authPasswordEncrypted = data.authPassword
+      ? await encryptCredential(data.authPassword)
+      : null
+
     return repo.createProject({
       userId: me.id,
       name: data.name,
       targetUrl: target.toString(),
       repoUrl,
       goal: data.goal,
+      authLoginPath: wantsAuth ? normaliseLoginPath(data.authLoginPath) : null,
+      authUsername: data.authUsername,
+      authPasswordEncrypted,
     })
   })
 

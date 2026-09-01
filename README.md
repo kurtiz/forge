@@ -126,6 +126,13 @@ Seeded defects:
 2. Inviting a teammate outside the org domain returns 500.
 3. The Pricing link in the navigation points at a page that was renamed.
 
+Checkout and invitations sit behind a login (`ines@northbeam.test` /
+`northbeam-demo` at `/demo/login`). An unauthenticated request is answered with
+the login form at **HTTP 200** — no redirect, no 401 — which is the auth wall a
+verifier cannot see from status codes. Run the demo without credentials and
+Forge reports `AUTH_FAILURE`; add the test account under **This app needs a
+login** and the same run finds the real defects behind it.
+
 The 60-second demo:
 
 1. Sign in as a guest.
@@ -220,6 +227,7 @@ wrangler r2 bucket create forge-evidence
 
 wrangler secret put BETTER_AUTH_SECRET
 wrangler secret put SOLARI_API_KEY        # optional
+wrangler secret put FORGE_CREDENTIAL_KEY  # optional; needed to store app logins
 
 pnpm db:migrate:remote
 pnpm deploy
@@ -286,11 +294,14 @@ Shipped:
 - Journey discovery, execution, failure classification, reproduction
 - Evidence-backed findings, agent trace, artifact storage
 - Verify fix
+- Repository investigation in a Solari sandbox, connecting a runtime failure to
+  the source that caused it
+- Logins for gated applications: an encrypted test account, a deterministic
+  sign-in before discovery, and auth-wall detection so an application Forge
+  cannot get into is reported as such instead of as a pile of defects
 
 Next, roughly in order:
 
-- Repository investigation in a Solari sandbox, connecting a runtime failure to
-  the source that caused it
 - An evaluation harness over the seeded fixtures, with false-positive rate as a
   first-class metric
 - GitHub App integration: pull request to verification to check

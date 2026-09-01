@@ -56,6 +56,13 @@ Rules:
   network faults, or missing credentials is environment.
 - If the evidence is too thin to tell, say unknown and give low confidence.
 - rootCause may be null. Only propose one when the evidence points at it.
+- When repository source evidence is present, ground rootCause in it and cite a
+  path from that evidence, e.g. "src/routes/invite.tsx:42 posts to /api/invite
+  without the team id". Never cite a path that was not shown to you.
+- When no repository source evidence is present, rootCause must not name any
+  file or quote any code. Describe the behaviour instead.
+- Source evidence sharpens the explanation. It never changes whether the failure
+  reproduced, and it cannot turn a flaky failure into a confirmed bug.
 - The title is a one-line description of the user-visible problem.
 
 Respond with JSON only, matching this shape exactly:

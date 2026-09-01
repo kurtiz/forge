@@ -29,48 +29,56 @@ export async function discoverJourneys(
   observation: PageObservation,
   goal: string | null,
   limit: number,
+  options: { authenticated?: boolean } = {},
 ): Promise<ExplorationResult> {
   const heuristic = heuristicJourneys(observation)
+  const rank = (journeys: readonly DiscoveredJourney[]) =>
+    rankJourneys(journeys, limit, options)
 
   if (!provider.available) {
-    return { journeys: rankJourneys(heuristic, limit), source: 'heuristic', model: null }
+    return { journeys: rank(heuristic), source: 'heuristic', model: null }
   }
 
   try {
     const output = await provider.generate({
       task: 'discovery',
       system: EXPLORER_SYSTEM,
-      user: describe(observation, goal),
+      user: describe(observation, goal, options.authenticated ?? false),
       maxTokens: 700,
     })
 
     const parsed = explorerOutputSchema.safeParse(extractJson(output.text))
     if (!parsed.success || parsed.data.journeys.length === 0) {
-      return {
-        journeys: rankJourneys(heuristic, limit),
-        source: 'heuristic',
-        model: null,
-      }
+      return { journeys: rank(heuristic), source: 'heuristic', model: null }
     }
 
     return {
-      journeys: rankJourneys(parsed.data.journeys, limit),
+      journeys: rank(parsed.data.journeys),
       source: 'model',
       model: output.model,
     }
   } catch {
     // Discovery is not worth failing a run over: the heuristic path covers it.
-    return { journeys: rankJourneys(heuristic, limit), source: 'heuristic', model: null }
+    return { journeys: rank(heuristic), source: 'heuristic', model: null }
   }
 }
 
-function describe(observation: PageObservation, goal: string | null): string {
+function describe(
+  observation: PageObservation,
+  goal: string | null,
+  authenticated: boolean,
+): string {
   const lines = [
     `URL: ${observation.url}`,
     `Title: ${observation.title || '(none)'}`,
     `HTTP status: ${observation.status}`,
   ]
   if (goal) lines.push(`Stated application goal: ${goal}`)
+  if (authenticated) {
+    lines.push(
+      'The browser is already signed in with a test account. Do not propose sign-in, sign-up, or registration journeys; propose journeys that are only reachable once signed in.',
+    )
+  }
   if (observation.headings.length) {
     lines.push(`Headings: ${observation.headings.join(' | ')}`)
   }

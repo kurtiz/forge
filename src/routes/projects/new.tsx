@@ -35,6 +35,10 @@ function NewProject() {
   const [targetUrl, setTargetUrl] = useState(demo ? demoUrl : '')
   const [repoUrl, setRepoUrl] = useState('')
   const [goal, setGoal] = useState('')
+  const [authLoginPath, setAuthLoginPath] = useState('')
+  const [authUsername, setAuthUsername] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [showAuth, setShowAuth] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -45,7 +49,15 @@ function NewProject() {
 
     try {
       const project = await createProject({
-        data: { name, targetUrl, repoUrl, goal },
+        data: {
+          name,
+          targetUrl,
+          repoUrl,
+          goal,
+          authLoginPath,
+          authUsername,
+          authPassword,
+        },
       })
       // Creating a project and then having to find the run button is a wasted
       // step; the intent of this form is always "verify this".
@@ -107,6 +119,58 @@ function NewProject() {
             value={goal}
             onChange={(e) => setGoal(e.currentTarget.value)}
           />
+
+          {showAuth ? (
+            <fieldset className="grid gap-5 rounded-lg border border-kumo-hairline p-4">
+              <legend className="px-1 text-sm font-medium">
+                Test account
+              </legend>
+              <p className="m-0 text-sm text-kumo-secondary">
+                For an application behind a login. Forge signs in once at the
+                start of a run and reuses the session for every journey. Use a{' '}
+                <strong>dedicated test account</strong> — never production
+                credentials. The password is encrypted before it is stored and is
+                never shown again, never sent to the model, and never written to
+                a log, an artifact, or the run timeline.
+              </p>
+
+              <Input
+                label="Login path"
+                placeholder="/login"
+                description="Path on the target site carrying the login form. Defaults to /login."
+                value={authLoginPath}
+                onChange={(e) => setAuthLoginPath(e.currentTarget.value)}
+              />
+
+              <Input
+                label="Username or email"
+                autoComplete="off"
+                placeholder="test-account@example.com"
+                value={authUsername}
+                onChange={(e) => setAuthUsername(e.currentTarget.value)}
+              />
+
+              <Input
+                label="Password"
+                type="password"
+                autoComplete="new-password"
+                description="Single sign-on, magic links, and second factors are not supported yet."
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.currentTarget.value)}
+              />
+            </fieldset>
+          ) : (
+            <div>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => setShowAuth(true)}
+              >
+                This app needs a login
+              </Button>
+            </div>
+          )}
 
           {error ? (
             <p

@@ -11,6 +11,7 @@ export type BudgetUsage = {
   browserActions: number
   browserSeconds: number
   evidenceBytes: number
+  sandboxSeconds: number
 }
 
 export class BudgetExceededError extends Error {
@@ -26,6 +27,7 @@ export class Budget {
     browserActions: 0,
     browserSeconds: 0,
     evidenceBytes: 0,
+    sandboxSeconds: 0,
   }
 
   private readonly startedAt = Date.now()
@@ -55,6 +57,10 @@ export class Budget {
         return this.elapsedSeconds + amount <= this.limits.maxBrowserSeconds
       case 'evidenceBytes':
         return next <= this.limits.maxEvidenceBytes
+      case 'sandboxSeconds':
+        // Unlike browser time, this is not derived from run-elapsed time: the
+        // sandbox is open for part of a run, so its cost is spent explicitly.
+        return next <= this.limits.maxSandboxSeconds
     }
   }
 

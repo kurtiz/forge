@@ -24,11 +24,25 @@ import {
 } from './types'
 import { assertSafeTargetUrl } from '../security'
 
-type SolariSession = {
-  id: string
+/**
+ * The create-session response.
+ *
+ * Two fields are read defensively. The identifier is `sessionId` on the wire but
+ * `id` on the SDKs' own `Session` type, and the published sources disagree about
+ * which one the gateway returns, so both are accepted. `cdpEndpoint` is optional:
+ * when the gateway omits it, the SDKs derive it from `wsEndpoint`.
+ */
+type SolariSessionResponse = {
+  sessionId?: string
+  id?: string
   wsEndpoint: string
+  cdpEndpoint?: string
+  expiresAt?: string
+}
+
+type SolariSession = {
+  sessionId: string
   cdpEndpoint: string
-  expiresAt: string
 }
 
 export type SolariConfig = {
@@ -39,6 +53,18 @@ export type SolariConfig = {
 }
 
 const DEFAULT_BASE_URL = 'https://api.getsolari.com'
+
+/**
+ * The gateway contract, kept in one block so a correction is a one-place edit.
+ * Paths are unversioned - verified against Solari's published SDKs, which use
+ * `https://api.getsolari.com` with no version prefix.
+ */
+const ENDPOINTS = {
+  create: '/sessions',
+  replay: (id: string) => `/sessions/${encodeURIComponent(id)}/replay-url`,
+  release: (id: string) => `/sessions/${encodeURIComponent(id)}`,
+}
+
 const SETTLE_MS = 900
 
 type ObservedPayload = {
@@ -64,7 +90,7 @@ export class SolariBrowserExecutor implements BrowserExecutor {
   private constructor(private readonly config: SolariConfig) {}
 
   get sessionId(): string | null {
-    return this.session?.id ?? null
+    return this.session?.sessionId ?? null
   }
 
   static async create(config: SolariConfig): Promise<SolariBrowserExecutor> {
@@ -103,11 +129,26 @@ export class SolariBrowserExecutor implements BrowserExecutor {
   }
 
   private async start() {
-    const response = await this.api('POST', '/v1/sessions', {
+    const response = await this.api('POST', ENDPOINTS.create, {
       recording: this.config.recording ?? true,
       stealth: this.config.stealth ?? false,
     })
-    this.session = (await response.json()) as SolariSession
+    const created = (await response.json()) as SolariSessionResponse
+    const createdId = created.sessionId ?? created.id
+
+    if (!createdId || !created.wsEndpoint) {
+      throw new ExecutorError(
+        'Solari create-session returned no session id or wsEndpoint.',
+        false,
+      )
+    }
+
+    this.session = {
+      sessionId: createdId,
+      // The gateway may omit the CDP endpoint; the SDKs derive it from the
+      // WebSocket endpoint by swapping the path segment.
+      cdpEndpoint: created.cdpEndpoint ?? created.wsEndpoint.replace('/ws/', '/cdp/'),
+    }
 
     const cdp = new CdpConnection()
     await cdp.connect(this.session.cdpEndpoint)
@@ -303,7 +344,7 @@ export class SolariBrowserExecutor implements BrowserExecutor {
     try {
       const response = await this.api(
         'GET',
-        `/v1/sessions/${this.session.id}/replay`,
+        ENDPOINTS.replay(this.session.sessionId),
       )
       const body = (await response.json()) as { url?: string }
       return body.url ?? null
@@ -319,7 +360,7 @@ export class SolariBrowserExecutor implements BrowserExecutor {
 
     if (!this.session) return
     try {
-      await this.api('DELETE', `/v1/sessions/${this.session.id}`)
+      await this.api('DELETE', ENDPOINTS.release(this.session.sessionId))
     } catch {
       // The session also expires on its own; a failed release must not mask
       // whatever error is already unwinding the run.

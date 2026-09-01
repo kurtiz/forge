@@ -12,6 +12,12 @@ interface ForgeOptionalEnv {
   /** Overrides the Solari API host, for staging or a self-hosted gateway. */
   SOLARI_BASE_URL?: string
 
+  /**
+   * Encrypts target-application test credentials at rest. Without it a project
+   * cannot store a login, which is a better failure than a predictable key.
+   */
+  FORGE_CREDENTIAL_KEY?: string
+
   /** OpenAI-compatible endpoint, typically a Cloudflare AI Gateway URL. */
   AI_GATEWAY_URL?: string
   AI_GATEWAY_KEY?: string

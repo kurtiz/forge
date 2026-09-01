@@ -15,7 +15,18 @@ APP_URL="http://localhost:3000"
 
 # Optional. Without it, runs use the HTTP executor: real requests and real
 # status codes, but no JavaScript, no screenshots, and no session replay.
-# SOLARI_API_KEY="sk_..."
+# It also gates repository investigation: with no key, a run records
+# "investigation.skipped" and findings carry no affected files.
+# SOLARI_API_KEY="slr_live_..."
+
+# Optional. Overrides the Solari API host, for staging or a self-hosted gateway.
+# SOLARI_BASE_URL="https://api.getsolari.com"
+
+# Required only to store target-application logins. Encrypts the password of a
+# project's test account at rest (AES-GCM). Any passphrase of 16+ characters.
+# Changing it makes existing stored credentials undecryptable.
+#   openssl rand -base64 32
+# FORGE_CREDENTIAL_KEY="replace-me-with-a-long-random-passphrase"
 
 # Optional. Point the model router at an OpenAI-compatible endpoint, typically
 # a Cloudflare AI Gateway. Without it, Forge uses Workers AI when the binding is

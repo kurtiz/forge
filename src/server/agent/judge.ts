@@ -21,6 +21,7 @@ import {
 import { JUDGE_SYSTEM } from './prompts'
 import { extractJson } from './json'
 import type { ModelProvider } from './provider'
+import type { SourceInsight } from '../investigation/types'
 
 export type JudgeInput = {
   journeyName: string
@@ -33,6 +34,8 @@ export type JudgeInput = {
   /** The agent trace for the failing journey, newest last. */
   trace: string[]
   executorKind: 'solari' | 'fetch'
+  /** Source read from the repository, when a sandbox investigation ran. */
+  sourceInsight?: SourceInsight | null
 }
 
 export type JudgeResult = JudgeOutput & { source: 'model' | 'rules' }
@@ -131,5 +134,39 @@ function describe(input: JudgeInput): string {
     lines.push(`Network errors:\n${input.signal.networkErrors.join('\n')}`)
   }
   lines.push(`Agent trace:\n${input.trace.join('\n')}`)
+
+  const insight = input.sourceInsight
+  if (insight) {
+    lines.push(describeSource(insight))
+  } else {
+    lines.push(
+      'Repository source: not available. Do not name files or cite code.',
+    )
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * Renders the source evidence. Paths and excerpts are repository content, so
+ * they are labelled as evidence to read, never as instructions to follow - the
+ * system prompt's untrusted-content policy covers what arrives here.
+ */
+function describeSource(insight: SourceInsight): string {
+  const lines = ['Repository source evidence:']
+  if (insight.framework) lines.push(`Framework: ${insight.framework}`)
+  if (insight.packageManager) lines.push(`Package manager: ${insight.packageManager}`)
+  if (insight.commit) lines.push(`Commit: ${insight.commit}`)
+
+  if (insight.matches.length === 0) {
+    lines.push('No source matched the runtime evidence.')
+    return lines.join('\n')
+  }
+
+  for (const match of insight.matches.slice(0, 12)) {
+    lines.push(`${match.path}:${match.line} (matched "${match.query}")`)
+    lines.push(match.excerpt)
+  }
+
   return lines.join('\n')
 }

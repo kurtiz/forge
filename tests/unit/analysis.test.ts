@@ -140,3 +140,34 @@ describe('rankJourneys', () => {
     expect(ranked[0].priority).toBeLessThanOrEqual(1)
   })
 })
+
+describe('rankJourneys with credentials', () => {
+  const journey = (name: string, priority = 0.5) => ({
+    name,
+    goal: `Do ${name}`,
+    priority,
+    entryPath: '/',
+  })
+
+  it('boosts sign-in journeys when Forge cannot get through the door', () => {
+    const ranked = rankJourneys([journey('Sign in'), journey('View about page')], 5)
+    expect(ranked.map((j) => j.name)).toContain('Sign in')
+    expect(ranked[0].name).toBe('Sign in')
+  })
+
+  it('drops them once already signed in', () => {
+    const ranked = rankJourneys(
+      [journey('Sign in'), journey('Create an account'), journey('Complete checkout')],
+      5,
+      { authenticated: true },
+    )
+    expect(ranked.map((j) => j.name)).toEqual(['Complete checkout'])
+  })
+
+  it('keeps non-auth journeys untouched when authenticated', () => {
+    const ranked = rankJourneys([journey('Complete checkout')], 5, {
+      authenticated: true,
+    })
+    expect(ranked).toHaveLength(1)
+  })
+})

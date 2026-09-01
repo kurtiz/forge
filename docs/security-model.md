@@ -102,9 +102,43 @@ everything else.
 Logs carry ids and metadata. Never API keys, passwords, tokens, session
 credentials, or repository contents.
 
+### Target-application logins
+
+A project may carry a test account for an application behind a login. That
+password is the only user-supplied secret Forge stores, and it is handled on
+four rules:
+
+**Encrypted at rest.** AES-GCM with a fresh IV per write, under a key derived
+from the `FORGE_CREDENTIAL_KEY` Worker secret (`security/credentials.ts`).
+Encryption happens at the API boundary; decryption happens only inside the run
+Durable Object, immediately before the value is typed. Without the key
+configured, a project simply cannot store a login — a better failure than
+encrypting under a predictable key.
+
+**Never returned.** `Project` has no field for the ciphertext, only a
+`hasCredentials` boolean, so the password cannot reach a response by being
+forgotten in a mapper. Reading it requires calling `readProjectCredentials` by
+name.
+
+**Never shown to the model.** Login fields are selected structurally, by input
+type, in `agent/authenticator.ts` — there is no prompt in that path. A page
+whose label says "type your password here" cannot induce a fill, because no
+model is deciding. This is the same principle as the untrusted-content policy: a
+prompt is not a security boundary.
+
+**Never recorded.** The authenticator writes no credential into a step, trace,
+or event. As a backstop for values the application itself echoes back,
+`redactSecrets` is applied to every event and every artifact for the life of the
+run. No screenshot is taken during sign-in, since redaction cannot reach pixels.
+
+Single sign-on, magic links, and second factors are not supported. Use a
+dedicated test account, never production credentials.
+
 ## Testing against real applications
 
 The Operator fills forms with obviously synthetic values and never real
-credentials. Forge is built for previews and staging environments. Pointing it
-at production with customer data means an autonomous agent submitting forms
-against live records, which is not what this is for.
+credentials — the one exception is the sign-in step above, which types a
+configured test account and nothing else. Forge is built for previews and
+staging environments. Pointing it at production with customer data means an
+autonomous agent submitting forms against live records, which is not what this
+is for.

@@ -6,6 +6,11 @@
  * site staying up. It is plain server-rendered HTML with real status codes, so
  * either executor can drive it.
  *
+ * Checkout and invitations sit behind a login (`/demo/login`,
+ * ines@northbeam.test / northbeam-demo). An unauthenticated request gets the
+ * login form at HTTP 200 rather than a redirect or a 401, which is exactly the
+ * auth wall a verifier cannot detect from status codes.
+ *
  * Seeded defects:
  *   1. Applying a coupon at checkout throws a 500. The handler reads a discount
  *      record that only exists for signed-in customers.
@@ -52,6 +57,43 @@ const PAGE_STYLE = `
   ul { padding-left: 18px; color: #52525b; }
 `
 
+/**
+ * The fixture's login gate.
+ *
+ * `/demo/checkout` and `/demo/invite` require a session. An unauthenticated
+ * request is answered with the login form **at HTTP 200**, not a 302 or a 401 -
+ * that is the case a verifier cannot see from status codes alone, and the one
+ * worth having regression coverage for.
+ */
+const DEMO_USER = 'ines@northbeam.test'
+const DEMO_PASSWORD = 'northbeam-demo'
+const SESSION_COOKIE = 'northbeam_session'
+const SESSION_VALUE = 'signed-in'
+
+const GATED_PATHS = new Set(['/demo/checkout', '/demo/invite'])
+
+function isSignedIn(request: Request): boolean {
+  const cookie = request.headers.get('cookie') ?? ''
+  return cookie
+    .split(';')
+    .map((part) => part.trim())
+    .includes(`${SESSION_COOKIE}=${SESSION_VALUE}`)
+}
+
+function loginPage(message?: string): Response {
+  return page(
+    'Sign in',
+    `<h1>Sign in</h1>
+     <p>Northbeam needs a signed-in account for checkout and invitations.</p>
+     ${message ? `<p class="ok">${escapeHtml(message)}</p>` : ''}
+     <form method="post" action="/demo/login">
+       <label>Email<input name="email" type="email" required placeholder="you@northbeam.test"></label>
+       <label>Password<input name="password" type="password" required></label>
+       <button type="submit" name="action" value="signin">Sign in</button>
+     </form>`,
+  )
+}
+
 function page(title: string, body: string, status = 200): Response {
   const html = `<!doctype html>
 <html lang="en">
@@ -68,6 +110,7 @@ function page(title: string, body: string, status = 200): Response {
     <a href="/demo">Dashboard</a>
     <a href="/demo/checkout">Checkout</a>
     <a href="/demo/invite">Invite teammate</a>
+    <a href="/demo/login">Sign in</a>
     <!-- Seeded defect 3: this page was renamed to /demo/plans and the link was missed. -->
     <a href="/demo/pricing">Pricing</a>
   </nav>
@@ -90,12 +133,23 @@ export async function handleDemoRequest(request: Request): Promise<Response> {
 
   if (request.method === 'POST') {
     const form = new URLSearchParams(await request.text())
+    if (path === '/demo/login') return signIn(form)
+    if (GATED_PATHS.has(path) && !isSignedIn(request)) return loginPage()
     if (path === '/demo/checkout') return checkout(form)
     if (path === '/demo/invite') return invite(form)
     return notFound(path)
   }
 
+  // The gate. 200 with a login form, so the redirect is invisible to anything
+  // reading status codes alone.
+  if (GATED_PATHS.has(path) && !isSignedIn(request)) return loginPage()
+
   switch (path) {
+    case '/demo/login':
+      return isSignedIn(request)
+        ? page('Signed in', `<h1>Signed in</h1><p>You are signed in as ${DEMO_USER}.</p>`)
+        : loginPage()
+
     case '/demo':
       return page(
         'Dashboard',
@@ -159,6 +213,27 @@ function notFound(path: string): Response {
      <p>The page <code>${escapeHtml(path)}</code> does not exist.</p>`,
     404,
   )
+}
+
+function signIn(form: URLSearchParams): Response {
+  const email = (form.get('email') ?? '').trim()
+  const password = form.get('password') ?? ''
+
+  if (email !== DEMO_USER || password !== DEMO_PASSWORD) {
+    // Re-rendering the form is what tells a verifier the sign-in did not take.
+    return loginPage('Those credentials were not recognised.')
+  }
+
+  const response = page(
+    'Signed in',
+    `<h1>Signed in</h1>
+     <p>Welcome back, Ines. Checkout and invitations are now available.</p>`,
+  )
+  response.headers.append(
+    'set-cookie',
+    `${SESSION_COOKIE}=${SESSION_VALUE}; Path=/demo; HttpOnly; SameSite=Lax`,
+  )
+  return response
 }
 
 function checkout(form: URLSearchParams): Response {

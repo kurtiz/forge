@@ -235,6 +235,14 @@ export const projectSchema = z.object({
   targetUrl: z.string(),
   repoUrl: z.string().nullable(),
   goal: z.string().nullable(),
+  authLoginPath: z.string().nullable(),
+  authUsername: z.string().nullable(),
+  /**
+   * Whether a password is stored, never the password. The ciphertext has no
+   * representation in this contract at all, so it cannot reach a response by
+   * being forgotten in a mapper.
+   */
+  hasCredentials: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -257,6 +265,27 @@ export const createProjectInputSchema = z.object({
     .max(400)
     .optional()
     .transform((v) => (v ? v : null)),
+  /**
+   * Test-account credentials for a login-gated target. Dedicated test accounts
+   * only - this is stated in the form copy and in the security docs.
+   */
+  authLoginPath: z
+    .string()
+    .trim()
+    .max(300)
+    .optional()
+    .transform((v) => (v ? v : null)),
+  authUsername: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .transform((v) => (v ? v : null)),
+  authPassword: z
+    .string()
+    .max(300)
+    .optional()
+    .transform((v) => (v ? v : null)),
 })
 export type CreateProjectInput = z.infer<typeof createProjectInputSchema>
 
@@ -275,6 +304,8 @@ export type AgentBudget = {
   maxBrowserSeconds: number
   maxReproductionAttempts: number
   maxEvidenceBytes: number
+  /** Sandbox wall time for repository investigation, across the whole run. */
+  maxSandboxSeconds: number
 }
 
 export const DEFAULT_BUDGET: AgentBudget = {
@@ -284,4 +315,5 @@ export const DEFAULT_BUDGET: AgentBudget = {
   maxBrowserSeconds: 15 * 60,
   maxReproductionAttempts: 3,
   maxEvidenceBytes: 24 * 1024 * 1024,
+  maxSandboxSeconds: 10 * 60,
 }

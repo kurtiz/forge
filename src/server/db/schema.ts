@@ -144,6 +144,17 @@ export const projects = sqliteTable(
     targetUrl: text('target_url').notNull(),
     repoUrl: text('repo_url'),
     goal: text('goal'),
+    /** Path on the target site carrying the login form, e.g. `/login`. */
+    authLoginPath: text('auth_login_path'),
+    /** Not a secret; stored as given so it can be shown back in the UI. */
+    authUsername: text('auth_username'),
+    /**
+     * AES-GCM ciphertext, base64. Written by `encryptCredential`, read only
+     * inside the run Durable Object. Never leaves the server in any response.
+     */
+    authPasswordEncrypted: text('auth_password_encrypted'),
+    /** Solari browser profile holding the signed-in state between runs. */
+    authProfileId: text('auth_profile_id'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },

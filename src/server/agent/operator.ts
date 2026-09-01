@@ -21,6 +21,7 @@ import type {
 } from '../execution/types'
 import type { FailureSignal } from '../domain/analysis'
 import type { DiscoveredJourney } from '../contracts'
+import { detectAuthWall } from './authenticator'
 
 export type OperatorStep = {
   sequence: number
@@ -128,6 +129,12 @@ export async function runJourney(
 
     signal.status = result.observation.status || signal.status
     if (result.observation.transportError) signal.transportError = true
+    // A login form on a page the journey did not navigate to means the app
+    // moved us to a wall. Without this a 200 redirect to /login is invisible
+    // and gets reported as an application defect.
+    if (detectAuthWall(result.observation, journey)) {
+      signal.authWall = true
+    }
     for (const error of result.observation.consoleErrors) {
       if (!signal.consoleErrors.includes(error)) signal.consoleErrors.push(error)
     }
@@ -177,19 +184,23 @@ export async function runJourney(
       : undefined) ?? ranked[0]?.element
 
   if (!primary) {
-    // Nothing on the page corresponds to this journey. That is a discovery
-    // miss, not an application defect, so the journey is skipped rather than
-    // reported as a failure.
+    // Nothing on the page corresponds to this journey. That is normally a
+    // discovery miss rather than an application defect, so the journey is
+    // skipped - unless the reason nothing matched is that a sign-in form is
+    // standing in front of it, which is a real result, not a miss.
+    const blocked = signal.authWall === true
     steps.push({
       sequence: ++sequence,
       action: 'Locate control',
       target: journey.name,
       expected: `A control matching "${journey.name}" is present`,
-      actual: 'No matching control was found on the page.',
-      status: 'skipped',
+      actual: blocked
+        ? 'A sign-in form is in the way: the application requires a login this run does not have.'
+        : 'No matching control was found on the page.',
+      status: blocked ? 'failed' : 'skipped',
     })
-    trace.push(`Locate control "${journey.name}" -> not found`)
-    return { passed: true, steps, trace, signal, finalObservation }
+    trace.push(`Locate control "${journey.name}" -> ${blocked ? 'blocked by sign-in' : 'not found'}`)
+    return { passed: !blocked, steps, trace, signal, finalObservation }
   }
 
   budget.spend('browserActions')
@@ -211,22 +222,32 @@ export async function runJourney(
   const after = await executor.readPage()
   finalObservation = after
 
+  // A journey that ended on a login form did not do what it set out to do,
+  // whatever the status code says. Without this an unauthenticated run reports
+  // "all journeys passed" for an application it never got inside.
+  const walled = detectAuthWall(after, journey)
+  if (walled) signal.authWall = true
+
   const brokeAfterwards =
     after.status >= 500 ||
     after.consoleErrors.length > 0 ||
     after.networkErrors.length > 0
+
+  const failed = brokeAfterwards || walled
 
   steps.push({
     sequence: ++sequence,
     action: 'Verify',
     target: null,
     expected: 'No server or client errors after the action',
-    actual: brokeAfterwards
-      ? `Errors after the action: ${[...after.networkErrors, ...after.consoleErrors]
-          .slice(0, 3)
-          .join('; ')}`
-      : `Settled on ${new URL(after.url).pathname} with status ${after.status}`,
-    status: brokeAfterwards ? 'failed' : 'passed',
+    actual: walled
+      ? 'Ended on a sign-in form: the application requires a login this run does not have.'
+      : brokeAfterwards
+        ? `Errors after the action: ${[...after.networkErrors, ...after.consoleErrors]
+            .slice(0, 3)
+            .join('; ')}`
+        : `Settled on ${new URL(after.url).pathname} with status ${after.status}`,
+    status: failed ? 'failed' : 'passed',
   })
 
   if (brokeAfterwards) {
@@ -240,5 +261,5 @@ export async function runJourney(
     }
   }
 
-  return { passed: !brokeAfterwards, steps, trace, signal, finalObservation }
+  return { passed: !failed, steps, trace, signal, finalObservation }
 }
