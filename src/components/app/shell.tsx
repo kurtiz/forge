@@ -9,6 +9,7 @@ import { Link } from '@tanstack/react-router'
 import { Button } from '@cloudflare/kumo/components/button'
 import { ThemeToggle } from '#/components/theme'
 import type { SessionUser } from '#/server/auth'
+import type { ReactNode } from "react";
 
 export function ForgeMark({ size = 18 }: { size?: number }) {
   return (
@@ -43,7 +44,7 @@ export function TopBar({
   right,
 }: {
   user: SessionUser | null
-  right?: React.ReactNode
+  right?: ReactNode
 }) {
   return (
     <header className="sticky top-0 z-40 h-14 border-b border-kumo-hairline bg-kumo-base/85 backdrop-blur">
@@ -93,7 +94,7 @@ export function Page({
   children,
   wide,
 }: {
-  children: React.ReactNode
+  children: ReactNode
   wide?: boolean
 }) {
   return (
@@ -112,10 +113,10 @@ export function PageHeader({
   actions,
   above,
 }: {
-  title: React.ReactNode
-  description?: React.ReactNode
-  actions?: React.ReactNode
-  above?: React.ReactNode
+  title: ReactNode
+  description?: ReactNode
+  actions?: ReactNode
+  above?: ReactNode
 }) {
   return (
     <div className="mb-7">
@@ -146,14 +147,14 @@ export function Section({
   children,
 }: {
   title: string
-  meta?: React.ReactNode
-  children: React.ReactNode
+  meta?: ReactNode
+  children: ReactNode
 }) {
   return (
     <section className="mt-10">
       <div className="mb-3 flex items-baseline justify-between gap-3 border-b border-kumo-hairline pb-2">
-        <h2 className="m-0 text-sm font-semibold text-kumo-strong">{title}</h2>
-        {meta ? <div className="text-xs text-kumo-subtle">{meta}</div> : null}
+        <h2 className="m-0 text-sm font-semibold text-kumo-strong px-2">{title}</h2>
+        {meta ? <div className="text-xs text-kumo-subtle px-4">{meta}</div> : null}
       </div>
       {children}
     </section>
@@ -167,7 +168,7 @@ export function Stat({
   hint,
 }: {
   label: string
-  value: React.ReactNode
+  value: ReactNode
   hint?: string
 }) {
   return (

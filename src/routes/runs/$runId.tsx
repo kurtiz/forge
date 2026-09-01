@@ -5,79 +5,75 @@
  * (they are the reason anyone opened this page), then journeys with their
  * steps, then the raw agent trace, then the artifacts.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { createFileRoute, Link, redirect, useRouter } from '@tanstack/react-router'
-import {
-  ArrowSquareOutIcon,
-  FilmSlateIcon,
-  StopCircleIcon,
-} from '@phosphor-icons/react'
-import { Button } from '@cloudflare/kumo/components/button'
-import { Page, PageHeader, Section, TopBar } from '#/components/app/shell'
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
+import { ArrowSquareOutIcon, FilmSlateIcon, StopCircleIcon } from "@phosphor-icons/react";
+import { Button } from "@cloudflare/kumo/components/button";
+import { Page, PageHeader, Section, TopBar } from "#/components/app/shell";
 import {
   isRunLive,
   JourneyStatusPill,
   RunStatusPill,
   SeverityPill,
-} from '#/components/app/status'
-import { RelativeTime } from '#/components/app/relative-time'
-import { ExecutorNotice } from '#/components/app/executor-notice'
-import { useRunStream } from '#/components/app/run-stream'
-import { EvidenceList } from '#/components/app/evidence-list'
-import { RUN_PHASES, phaseIndex } from '#/server/domain/run-state'
-import { getRun, stopRun } from '#/server/api'
+} from "#/components/app/status";
+import { RelativeTime } from "#/components/app/relative-time";
+import { ExecutorNotice } from "#/components/app/executor-notice";
+import { useRunStream } from "#/components/app/run-stream";
+import { EvidenceList } from "#/components/app/evidence-list";
+import { phaseIndex, RUN_PHASES } from "#/server/domain/run-state";
+import { getRun, stopRun } from "#/server/api";
 
-export const Route = createFileRoute('/runs/$runId')({
+export const Route = createFileRoute("/runs/$runId")({
   beforeLoad: ({ context }) => {
-    if (!context.session.user) throw redirect({ to: '/sign-in' })
+    if (!context.session.user) throw redirect({ to: "/sign-in" });
   },
   loader: ({ params }) => getRun({ data: { runId: params.runId } }),
   component: RunPage,
-})
+});
 
 function RunPage() {
   const { run, project, journeys, steps, findings, evidence, events } =
-    Route.useLoaderData()
-  const { session } = Route.useRouteContext()
-  const router = useRouter()
-  const [stopping, setStopping] = useState(false)
+    Route.useLoaderData();
+  const { session } = Route.useRouteContext();
+  const router = useRouter();
+  const [stopping, setStopping] = useState(false);
 
   const refresh = useCallback(() => {
-    void router.invalidate()
-  }, [router])
+    void router.invalidate();
+  }, [router]);
 
   const { events: liveEvents, live } = useRunStream({
     runId: run.id,
     status: run.status,
     initialEvents: events,
     onFinished: refresh,
-  })
+  });
 
   async function stop() {
-    setStopping(true)
+    setStopping(true);
     try {
-      await stopRun({ data: { runId: run.id } })
-      await router.invalidate()
+      await stopRun({ data: { runId: run.id } });
+      await router.invalidate();
     } finally {
-      setStopping(false)
+      setStopping(false);
     }
   }
 
-  const stepsByJourney = new Map<string, typeof steps>()
+  const stepsByJourney = new Map<string, typeof steps>();
   for (const step of steps) {
-    const bucket = stepsByJourney.get(step.journeyId) ?? []
-    bucket.push(step)
-    stepsByJourney.set(step.journeyId, bucket)
+    const bucket = stepsByJourney.get(step.journeyId) ?? [];
+    bucket.push(step);
+    stepsByJourney.set(step.journeyId, bucket);
   }
 
-  const recording = evidence.find((e) => e.kind === 'recording')
+  const recording = evidence.find((e) => e.kind === "recording");
   const replayUrl =
     run.replayUrl ??
-    (typeof recording?.metadata.url === 'string' ? recording.metadata.url : null)
+    (typeof recording?.metadata.url === "string" ? recording.metadata.url : null);
 
   return (
     <>
-      <TopBar user={session.user} />
+      <TopBar user={session.user}/>
       <Page wide>
         <PageHeader
           above={
@@ -95,7 +91,7 @@ function RunPage() {
               <span className="font-mono text-base font-normal text-kumo-subtle">
                 {run.id}
               </span>
-              <RunStatusPill status={run.status} />
+              <RunStatusPill status={run.status}/>
             </span>
           }
           description={
@@ -103,19 +99,19 @@ function RunPage() {
               <span className="font-mono text-xs">{run.targetUrl}</span>
               <span className="text-kumo-subtle">·</span>
               <span className="text-xs">
-                {run.executor === 'solari'
-                  ? 'Solari browser'
-                  : 'HTTP executor, no JavaScript'}
+                {run.executor === "solari"
+                  ? "Solari browser"
+                  : "HTTP executor, no JavaScript"}
               </span>
               <span className="text-kumo-subtle">·</span>
-              <RelativeTime iso={run.createdAt} />
+              <RelativeTime iso={run.createdAt}/>
             </span>
           }
           actions={
             <>
               {replayUrl ? (
                 <a href={replayUrl} target="_blank" rel="noreferrer" className="no-underline">
-                  <Button variant="secondary" icon={<FilmSlateIcon size={15} />}>
+                  <Button variant="secondary" icon={<FilmSlateIcon size={15}/>}>
                     Watch replay
                   </Button>
                 </a>
@@ -125,7 +121,7 @@ function RunPage() {
                   variant="secondary-destructive"
                   loading={stopping}
                   onClick={stop}
-                  icon={<StopCircleIcon size={15} />}
+                  icon={<StopCircleIcon size={15}/>}
                 >
                   Stop run
                 </Button>
@@ -134,12 +130,13 @@ function RunPage() {
           }
         />
 
-        <ExecutorNotice executor={run.executor} />
+        <ExecutorNotice executor={run.executor}/>
 
-        <PhaseRail status={run.status} />
+        <PhaseRail status={run.status}/>
 
         {run.summary ? (
-          <p className="mt-6 rounded-lg border border-kumo-hairline bg-kumo-recessed px-4 py-3 text-sm text-kumo-strong">
+          <p
+            className="mt-6 rounded-lg border border-kumo-hairline bg-kumo-recessed px-4 py-3 text-sm text-kumo-strong">
             {run.summary}
           </p>
         ) : null}
@@ -152,18 +149,19 @@ function RunPage() {
                   <Link
                     to="/findings/$findingId"
                     params={{ findingId: finding.id }}
-                    className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 no-underline transition-colors hover:bg-kumo-tint"
+                    className="flex flex-wrap items-center px-4 rounded-lg gap-x-4 gap-y-2 py-3.5
+                    no-underline transition-colors hover:bg-kumo-tint"
                   >
-                    <SeverityPill severity={finding.severity} />
+                    <SeverityPill severity={finding.severity}/>
                     <span className="min-w-0 flex-1 text-sm font-medium text-kumo-strong">
                       {finding.title}
                     </span>
                     <span className="tabular shrink-0 text-xs text-kumo-subtle">
                       {finding.reproductionAttempts > 0
                         ? `${finding.reproductionFailures}/${finding.reproductionAttempts} reproduced`
-                        : 'Not reproduced'}
+                        : "Not reproduced"}
                     </span>
-                    <ArrowSquareOutIcon size={14} className="text-kumo-subtle" />
+                    <ArrowSquareOutIcon size={14} className="text-kumo-subtle"/>
                   </Link>
                 </li>
               ))}
@@ -175,20 +173,20 @@ function RunPage() {
           title="Journeys"
           meta={
             journeys.length > 0
-              ? `${journeys.filter((j) => j.status === 'passed').length} of ${journeys.length} passed`
+              ? `${journeys.filter((j) => j.status === "passed").length} of ${journeys.length} passed`
               : undefined
           }
         >
           {journeys.length === 0 ? (
             <p className="py-6 text-sm text-kumo-subtle">
-              {live ? 'Exploring the application…' : 'No journeys were discovered.'}
+              {live ? "Exploring the application…" : "No journeys were discovered."}
             </p>
           ) : (
             <ul className="m-0 list-none divide-y divide-kumo-hairline p-0">
               {journeys.map((journey) => (
                 <li key={journey.id} className="py-4">
                   <div className="flex flex-wrap items-center gap-3">
-                    <JourneyStatusPill status={journey.status} />
+                    <JourneyStatusPill status={journey.status}/>
                     <span className="text-sm font-medium text-kumo-strong">
                       {journey.name}
                     </span>
@@ -209,25 +207,25 @@ function RunPage() {
                         >
                           <span
                             className={`shrink-0 ${
-                              step.status === 'failed'
-                                ? 'text-[var(--forge-fail)]'
-                                : step.status === 'skipped'
-                                  ? 'text-kumo-subtle'
-                                  : 'text-[var(--forge-pass)]'
+                              step.status === "failed"
+                                ? "text-[var(--forge-fail)]"
+                                : step.status === "skipped"
+                                  ? "text-kumo-subtle"
+                                  : "text-[var(--forge-pass)]"
                             }`}
                           >
-                            {step.status === 'failed'
-                              ? 'FAIL'
-                              : step.status === 'skipped'
-                                ? 'SKIP'
-                                : ' OK '}
+                            {step.status === "failed"
+                              ? "FAIL"
+                              : step.status === "skipped"
+                                ? "SKIP"
+                                : " OK "}
                           </span>
                           <span className="min-w-0 flex-1 text-kumo-subtle">
                             <span className="text-kumo-strong">
                               {step.action}
-                              {step.target ? ` "${step.target}"` : ''}
+                              {step.target ? ` "${step.target}"` : ""}
                             </span>
-                            {step.actual ? `: ${step.actual}` : ''}
+                            {step.actual ? `: ${step.actual}` : ""}
                           </span>
                         </li>
                       ))}
@@ -244,7 +242,8 @@ function RunPage() {
           meta={
             live ? (
               <span className="inline-flex items-center gap-1.5 text-[var(--forge-live)]">
-                <span className="pulse-live inline-block size-1.5 rounded-full bg-[var(--forge-live)]" />
+                <span
+                  className="pulse-live inline-block size-1.5 rounded-full bg-[var(--forge-live)]"/>
                 Live
               </span>
             ) : (
@@ -252,77 +251,77 @@ function RunPage() {
             )
           }
         >
-          <Timeline events={liveEvents} live={live} />
+          <Timeline events={liveEvents} live={live}/>
         </Section>
 
         {evidence.length > 0 ? (
           <Section title="Evidence" meta={`${evidence.length} artifacts`}>
-            <EvidenceList evidence={evidence} />
+            <EvidenceList evidence={evidence}/>
           </Section>
         ) : null}
       </Page>
     </>
-  )
+  );
 }
 
 /** Horizontal phase indicator. Every phase is labelled; colour is secondary. */
 function PhaseRail({ status }: { status: Parameters<typeof phaseIndex>[0] }) {
-  const current = phaseIndex(status)
-  const failed = status === 'failed' || status === 'canceled'
+  const current = phaseIndex(status);
+  const failed = status === "failed" || status === "canceled";
 
   return (
     <ol className="m-0 grid list-none grid-cols-3 gap-x-4 gap-y-3 p-0 sm:grid-cols-6">
       {RUN_PHASES.map((phase, i) => {
-        const done = current > i
-        const active = current === i && !failed
+        const done = current > i;
+        const active = current === i && !failed;
         return (
           <li key={phase} className="min-w-0">
             <div
               className="h-0.5 w-full rounded-full transition-colors"
               style={{
                 background: failed
-                  ? 'var(--forge-idle)'
+                  ? "var(--forge-idle)"
                   : done
-                    ? 'var(--forge-pass)'
+                    ? "var(--forge-pass)"
                     : active
-                      ? 'var(--forge-live)'
-                      : 'var(--forge-console-line)',
+                      ? "var(--forge-live)"
+                      : "var(--forge-console-line)",
               }}
             />
             <div
               className={`mt-2 truncate text-xs ${
                 active
-                  ? 'font-medium text-kumo-strong'
+                  ? "font-medium text-kumo-strong"
                   : done
-                    ? 'text-kumo-subtle'
-                    : 'text-kumo-inactive'
+                    ? "text-kumo-subtle"
+                    : "text-kumo-inactive"
               }`}
             >
               {phase[0].toUpperCase() + phase.slice(1)}
             </div>
           </li>
-        )
+        );
       })}
     </ol>
-  )
+  );
 }
 
 const EVENT_TONE: Record<string, string> = {
-  'journey.failed': 'var(--forge-fail)',
-  'run.failed': 'var(--forge-fail)',
-  'finding.created': 'var(--forge-fail)',
-  'journey.passed': 'var(--forge-pass)',
-  'run.completed': 'var(--forge-pass)',
-  'fix.verified': 'var(--forge-pass)',
-  'fix.still_failing': 'var(--forge-fail)',
-  'budget.exhausted': 'var(--forge-warn)',
-  'run.canceled': 'var(--forge-warn)',
-}
+  "journey.failed": "var(--forge-fail)",
+  "run.failed": "var(--forge-fail)",
+  "finding.created": "var(--forge-fail)",
+  "journey.passed": "var(--forge-pass)",
+  "run.completed": "var(--forge-pass)",
+  "fix.verified": "var(--forge-pass)",
+  "fix.still_failing": "var(--forge-fail)",
+  "budget.exhausted": "var(--forge-warn)",
+  "run.canceled": "var(--forge-warn)",
+};
 
 function Timeline({
-  events,
-  live,
-}: {
+                    events,
+                    live,
+                  }: {
   events: Array<{
     id: string
     sequence: number
@@ -332,19 +331,19 @@ function Timeline({
   }>
   live: boolean
 }) {
-  const endRef = useRef<HTMLDivElement>(null)
+  const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!live) return
-    endRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [events.length, live])
+    if (!live) return;
+    endRef.current?.scrollIntoView({ block: "nearest" });
+  }, [events.length, live]);
 
   if (events.length === 0) {
     return (
       <p className="py-6 text-sm text-kumo-subtle">
-        {live ? 'Waiting for the first event…' : 'No events were recorded.'}
+        {live ? "Waiting for the first event…" : "No events were recorded."}
       </p>
-    )
+    );
   }
 
   return (
@@ -355,7 +354,7 @@ function Timeline({
             <span
               aria-hidden
               className="absolute left-1 top-[0.5rem] size-1.5 rounded-full"
-              style={{ background: EVENT_TONE[event.type] ?? 'var(--forge-idle)' }}
+              style={{ background: EVENT_TONE[event.type] ?? "var(--forge-idle)" }}
             />
             <time
               dateTime={event.createdAt}
@@ -371,7 +370,7 @@ function Timeline({
           </li>
         ))}
       </ol>
-      <div ref={endRef} />
+      <div ref={endRef}/>
     </div>
-  )
+  );
 }
