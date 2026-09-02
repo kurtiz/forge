@@ -31,7 +31,7 @@ import {
   type SourceInsight,
   type SourceInvestigator,
 } from '../investigation'
-import { discoverJourneys } from '../agent/explorer'
+import { discoverJourneys, HEURISTIC_REASON_TEXT } from '../agent/explorer'
 import { pathOf, signIn } from '../agent/authenticator'
 import { judgeFinding } from '../agent/judge'
 import { runJourney, type JourneyRun } from '../agent/operator'
@@ -392,8 +392,14 @@ export async function executeRun(
 
     await emit(
       'journeys.discovered',
-      `Discovered ${exploration.journeys.length} journeys (${exploration.source})`,
-      { source: exploration.source, model: exploration.model },
+      exploration.reason
+        ? `Discovered ${exploration.journeys.length} journeys without a model: ${HEURISTIC_REASON_TEXT[exploration.reason]}. Journeys came from page heuristics, which are much weaker.`
+        : `Discovered ${exploration.journeys.length} journeys (${exploration.source})`,
+      {
+        source: exploration.source,
+        model: exploration.model,
+        reason: exploration.reason ?? null,
+      },
     )
 
     /*

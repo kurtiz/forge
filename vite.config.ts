@@ -1,9 +1,34 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import { devtools } from '@tanstack/devtools-vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { cloudflare } from '@cloudflare/vite-plugin'
+
+/**
+ * Lets `.dev.vars` carry CLOUDFLARE_ACCOUNT_ID.
+ *
+ * The account id has to be in the process environment before the Cloudflare
+ * plugin runs, which meant prefixing every `pnpm dev` with it and, in practice,
+ * forgetting to. A run then discovers journeys with no model and says so only
+ * in its timeline. `.dev.vars` is where every other local secret already lives,
+ * so it is read here too - an explicit environment variable still wins.
+ */
+function accountIdFromDevVars(): string | undefined {
+  try {
+    const line = readFileSync('.dev.vars', 'utf8')
+      .split('\n')
+      .find((l) => l.trim().startsWith('CLOUDFLARE_ACCOUNT_ID'))
+
+    return line?.split('=')[1]?.trim().replace(/^["']|["']$/g, '') || undefined
+  } catch {
+    // No .dev.vars, which is normal in CI and in a production build.
+    return undefined
+  }
+}
+
+process.env.CLOUDFLARE_ACCOUNT_ID ??= accountIdFromDevVars()
 
 export default defineConfig({
   resolve: { tsconfigPaths: true },

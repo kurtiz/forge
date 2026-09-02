@@ -28,6 +28,12 @@ APP_URL="http://localhost:3000"
 #   openssl rand -base64 32
 # FORGE_CREDENTIAL_KEY="replace-me-with-a-long-random-passphrase"
 
+# Enables Workers AI in local development. It has no local simulator, so its
+# binding runs against the real service, which needs an account named. Without
+# it the agents fall back to page heuristics, which are much weaker, and the run
+# timeline says so. `wrangler whoami` lists the ids.
+# CLOUDFLARE_ACCOUNT_ID="0000000000000000000000000000000"
+
 # Optional. Point the model router at an OpenAI-compatible endpoint, typically
 # a Cloudflare AI Gateway. Without it, Forge uses Workers AI when the binding is
 # reachable and falls back to its heuristic agents when it is not.

@@ -18,10 +18,34 @@ import { EXPLORER_SYSTEM } from './prompts'
 import { extractJson } from './json'
 import type { ModelProvider } from './provider'
 
+/**
+ * Why discovery fell back to heuristics.
+ *
+ * Recorded because the fallback is close to useless on an application whose
+ * controls do not happen to use the words the heuristics know, and a run that
+ * quietly produces one journey called "Load the entry page" looks like a thin
+ * application rather than an unreachable model. The run timeline now says
+ * which it was.
+ */
+export type HeuristicReason =
+  | 'no_model_configured'
+  | 'model_call_failed'
+  | 'model_output_invalid'
+  | 'model_returned_nothing'
+
+export const HEURISTIC_REASON_TEXT: Record<HeuristicReason, string> = {
+  no_model_configured: 'no model is reachable',
+  model_call_failed: 'the model call failed',
+  model_output_invalid: 'the model returned output that did not validate',
+  model_returned_nothing: 'the model proposed no journeys',
+}
+
 export type ExplorationResult = {
   journeys: DiscoveredJourney[]
   source: 'model' | 'heuristic'
   model: string | null
+  /** Set only when `source` is `heuristic`. */
+  reason?: HeuristicReason
 }
 
 /** The path part of a page's URL, always absolute, never with a trailing slash. */
@@ -101,13 +125,19 @@ export async function discoverJourneys(
   limit: number,
   options: { authenticated?: boolean } = {},
 ): Promise<ExplorationResult> {
-  const heuristic = heuristicJourneys(observation)
+  const heuristic = heuristicJourneys(observation, goal)
   const rank = (journeys: readonly DiscoveredJourney[]) =>
     rankJourneys(anchorJourneys(journeys, observation), limit, options)
+  const fallback = (reason: HeuristicReason): ExplorationResult => ({
+    journeys: rank(heuristic),
+    source: 'heuristic',
+    model: null,
+    reason,
+  })
 
   if (!provider.available) {
     console.debug('[explorer] Provider not available, using heuristic-only discovery')
-    return { journeys: rank(heuristic), source: 'heuristic', model: null }
+    return fallback('no_model_configured')
   }
 
   try {
@@ -124,12 +154,12 @@ export async function discoverJourneys(
     
     if (!parsed.success) {
       console.debug(`[explorer] Schema validation failed: ${parsed.error.issues.map(i => i.message).join(', ')}`)
-      return { journeys: rank(heuristic), source: 'heuristic', model: null }
+      return fallback('model_output_invalid')
     }
-    
+
     if (parsed.data.journeys.length === 0) {
       console.debug('[explorer] Model returned 0 journeys, using heuristic fallback')
-      return { journeys: rank(heuristic), source: 'heuristic', model: null }
+      return fallback('model_returned_nothing')
     }
 
     console.debug(`[explorer] Model discovery succeeded: ${parsed.data.journeys.length} journeys`)
@@ -142,7 +172,7 @@ export async function discoverJourneys(
     const message = error instanceof Error ? error.message : String(error)
     console.debug(`[explorer] Model call failed: ${message}`)
     // Discovery is not worth failing a run over: the heuristic path covers it.
-    return { journeys: rank(heuristic), source: 'heuristic', model: null }
+    return fallback('model_call_failed')
   }
 }
 
@@ -220,13 +250,103 @@ const ACTION_WORDS: Array<[RegExp, string]> = [
  * sub-paths — it falls back to extracting paths from the page text and
  * inferring likely sub-pages from the URL structure.
  */
-function heuristicJourneys(observation: PageObservation): DiscoveredJourney[] {
+/**
+ * Words from the stated goal worth matching against a page.
+ *
+ * Short words carry no signal, and the words people reach for when writing a
+ * goal - "user", "should", "able" - appear in every goal and match nothing
+ * useful, so they are dropped rather than left to match a "User settings" link.
+ */
+const GOAL_STOP_WORDS = new Set([
+  'user',
+  'users',
+  'should',
+  'able',
+  'must',
+  'want',
+  'wants',
+  'need',
+  'needs',
+  'this',
+  'that',
+  'with',
+  'from',
+  'their',
+  'them',
+  'they',
+  'when',
+  'then',
+  'have',
+  'been',
+  'into',
+  'page',
+  'site',
+  'application',
+])
+
+export function goalKeywords(goal: string | null): string[] {
+  if (!goal) return []
+  return [
+    ...new Set(
+      goal
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((word) => word.length > 3 && !GOAL_STOP_WORDS.has(word)),
+    ),
+  ]
+}
+
+function heuristicJourneys(
+  observation: PageObservation,
+  goal: string | null = null,
+): DiscoveredJourney[] {
   const found = new Map<string, DiscoveredJourney>()
   const currentPath = new URL(observation.url).pathname || '/'
 
   const candidates = observation.elements.filter(
     (e) => e.role === 'link' || e.role === 'button',
   )
+
+  /*
+   * Phase 0: the goal the operator of this project actually stated.
+   *
+   * It used to be handed to the model and to nothing else, so on a run where
+   * no model was reachable - which is every run on a deployment without one -
+   * the single clearest statement of intent in the whole system was ignored.
+   */
+  const keywords = goalKeywords(goal)
+  if (keywords.length > 0) {
+    for (const element of candidates) {
+      const name = element.name.toLowerCase()
+      if (!keywords.some((word) => name.includes(word))) continue
+
+      let entryPath = currentPath
+      if (element.href) {
+        try {
+          entryPath = new URL(element.href, observation.url).pathname
+        } catch {
+          entryPath = currentPath
+        }
+      }
+
+      found.set(
+        element.name,
+        discoveredJourneySchema.parse({
+          name: element.name.replace(/\s+/g, ' ').trim().slice(0, 80),
+          goal: goal ?? `Complete "${element.name}".`,
+          // Above everything the heuristics guess at: it is the one journey
+          // somebody actually asked for.
+          priority: 0.95,
+          entryPath,
+        }),
+      )
+    }
+
+    if (found.size > 0) {
+      console.debug(`[explorer] Phase 0 matched: ${found.size} journeys from the stated goal`)
+      return [...found.values()]
+    }
+  }
 
   // --- Phase 1: match element text against known action patterns ---
   for (const element of candidates) {
@@ -301,13 +421,21 @@ function heuristicJourneys(observation: PageObservation): DiscoveredJourney[] {
     return [...found.values()]
   }
 
-  // --- Phase 4: last resort — just load the entry page ---
+  /*
+   * Phase 4: last resort.
+   *
+   * Named after the stated goal when there is one, even though nothing on the
+   * page matched it. The journey will be skipped, and "could not attempt
+   * 'Users should be able to add referrals'" tells its reader something;
+   * "could not attempt 'Load the entry page'" tells them nothing at all.
+   */
   console.debug('[explorer] Phase 4: using fallback entry page journey')
+  const fallbackName = goal ? goal.trim().slice(0, 80) : 'Load the entry page'
   found.set(
-    'Load the entry page',
+    fallbackName,
     discoveredJourneySchema.parse({
-      name: 'Load the entry page',
-      goal: 'The entry page loads without server or client errors.',
+      name: fallbackName,
+      goal: goal ?? 'The entry page loads without server or client errors.',
       priority: 0.5,
       entryPath: currentPath,
     }),

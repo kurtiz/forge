@@ -170,14 +170,17 @@ SOLARI_API_KEY="sk_..."
 ```
 
 Workers AI has no local simulator, so its binding is marked `remote` and the
-model calls in development go to the real service. That needs an account named:
+model calls in development go to the real service. That needs an account named,
+either in `.dev.vars` or in the environment:
 
 ```bash
-CLOUDFLARE_ACCOUNT_ID=<id> pnpm dev     # real model calls
-pnpm dev                                # offline, heuristic agents
+CLOUDFLARE_ACCOUNT_ID="<id>"            # in .dev.vars, or exported
+pnpm dev
 ```
 
-`wrangler whoami` lists the ids. Only the AI binding is remote; D1, R2, and the
+`wrangler whoami` lists the ids. Without one, discovery falls back to page
+heuristics, which are much weaker — the run timeline says so explicitly rather
+than leaving a thin set of journeys to look like a thin application. Only the AI binding is remote; D1, R2, and the
 Durable Object stay local either way. The account id is what switches remote
 bindings on at all, because a login that can see several accounts cannot pick
 one on its own, and an unconditional remote binding stops `pnpm dev` from
