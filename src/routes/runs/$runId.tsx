@@ -39,8 +39,14 @@ function RunPage() {
   const router = useRouter();
   const [stopping, setStopping] = useState(false);
 
-  const refresh = useCallback(() => {
-    void router.invalidate();
+  /*
+   * `sync: true` waits for the loader to finish rather than firing and
+   * forgetting. Without it the page announced the run was over while still
+   * rendering the journeys, findings and evidence it had loaded when the run
+   * began, and only a full reload caught up.
+   */
+  const refresh = useCallback(async () => {
+    await router.invalidate({ sync: true });
   }, [router]);
 
   const { events: liveEvents, live, currentStatus } = useRunStream({
@@ -49,6 +55,25 @@ function RunPage() {
     initialEvents: events,
     onFinished: refresh,
   });
+
+  /*
+   * Reconciles the stream with what is on screen.
+   *
+   * The stream can report a run finished before the loader has been asked
+   * again - the events arrive on their own connection, and one refresh can
+   * land a moment early, while the engine is still writing its last rows. So
+   * rather than trusting a single refresh, the page notices that it is showing
+   * a live run under a finished stream and asks once more. `attempted` bounds
+   * it: this reconciles, it does not poll.
+   */
+  const reconciled = useRef(false);
+  useEffect(() => {
+    if (isRunLive(run.status) && !isRunLive(currentStatus) && !reconciled.current) {
+      reconciled.current = true;
+      void refresh();
+    }
+    if (!isRunLive(run.status)) reconciled.current = false;
+  }, [run.status, currentStatus, refresh]);
 
   async function stop() {
     setStopping(true);

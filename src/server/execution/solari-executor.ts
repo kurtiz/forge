@@ -83,6 +83,17 @@ const SETTLE_MAX_MS = 8_000
 /** Poll interval while waiting for quiet. */
 const SETTLE_POLL_MS = 100
 
+/**
+ * The window the agent sees.
+ *
+ * A headless browser's default window is small, and a small window is a
+ * different application: responsive layouts collapse navigation behind a menu,
+ * move actions into overflow, and render fewer rows. Verifying that and calling
+ * it the product would be a quiet lie, so the viewport is pinned to an ordinary
+ * desktop size - which is also what makes a screenshot worth looking at.
+ */
+const VIEWPORT = { width: 1440, height: 900 }
+
 type ObservedPayload = {
   url: string
   title: string
@@ -191,6 +202,25 @@ export class SolariBrowserExecutor implements BrowserExecutor {
     await cdp.send('Runtime.enable', {}, sessionId)
     await cdp.send('Network.enable', {}, sessionId)
     await cdp.send('Log.enable', {}, sessionId)
+
+    /*
+     * Not fatal if the provider will not take it: a run in the default window
+     * is worse than one at desktop size, but far better than no run at all.
+     */
+    try {
+      await cdp.send(
+        'Emulation.setDeviceMetricsOverride',
+        {
+          width: VIEWPORT.width,
+          height: VIEWPORT.height,
+          deviceScaleFactor: 1,
+          mobile: false,
+        },
+        sessionId,
+      )
+    } catch {
+      console.debug('[solari] viewport override refused; using the default window')
+    }
   }
 
   /**

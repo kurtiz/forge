@@ -103,6 +103,32 @@ p {
  * translucent pure black/white outline darkens or lightens the edge it sits on
  * instead of painting a band over it. Inset so it hugs the clipped corner.
  */
+/*
+ * A filmstrip's scrollbar.
+ *
+ * Visible enough to say the strip scrolls, quiet enough not to sit under the
+ * screenshots as a second border. Firefox takes the standard properties;
+ * WebKit needs its own, and ignoring the vendor rule is fine - it falls back
+ * to the platform scrollbar.
+ */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--forge-idle) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--forge-idle);
+  border-radius: 999px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .image-frame {
   outline: 1px solid oklch(0 0 0 / 0.1);
   outline-offset: -1px;

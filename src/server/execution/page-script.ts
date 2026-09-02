@@ -11,7 +11,15 @@
  * it does to the DOM must not be able to break the run.
  */
 export const OBSERVE_SCRIPT = `(() => {
-  const MAX_ELEMENTS = 60;
+  /*
+   * The cap exists so a page cannot flood the observation, and 60 was too low
+   * for a real application: one date picker renders a grid of day buttons, and
+   * a form's submit control sits after them in document order, so the page was
+   * truncated before the button that matters. Form controls are also kept
+   * ahead of links when trimming, because a journey is driven by the former
+   * and only navigates with the latter.
+   */
+  const MAX_ELEMENTS = 120;
   const visible = (el) => {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return false;
@@ -36,14 +44,12 @@ export const OBSERVE_SCRIPT = `(() => {
   };
 
   let counter = 0;
-  const elements = [];
+  const collected = [];
   const selector = 'a[href], button, input, textarea, select, [role="button"], [role="link"]';
 
   for (const el of document.querySelectorAll(selector)) {
-    if (elements.length >= MAX_ELEMENTS) break;
     const type = (el.getAttribute('type') || '').toLowerCase();
     if (type === 'hidden') continue;
-    if (el.disabled) continue;
     if (!visible(el)) continue;
 
     const ref = 'e' + (++counter);
@@ -56,15 +62,26 @@ export const OBSERVE_SCRIPT = `(() => {
     else if (tag === 'textarea') role = 'textarea';
     else if (tag === 'input' && type !== 'submit' && type !== 'button') role = 'input';
 
-    elements.push({
+    collected.push({
       ref: ref,
       role: role,
       name: (label(el) || role).slice(0, 120),
       href: tag === 'a' ? (el.href || undefined) : undefined,
       inputType: type || undefined,
       required: el.hasAttribute('required') || undefined,
+      /*
+       * Reported rather than dropped. A submit button that stays disabled
+       * until the form validates used to vanish from the page model entirely,
+       * so a run could fill a form and conclude the application offered no way
+       * to submit it - when what it offered was a button it would not enable.
+       */
+      disabled: (el.disabled || el.getAttribute('aria-disabled') === 'true') || undefined,
     });
   }
+
+  const controls = collected.filter((e) => e.role !== 'link');
+  const links = collected.filter((e) => e.role === 'link');
+  const elements = controls.concat(links).slice(0, MAX_ELEMENTS);
 
   const headings = Array.from(document.querySelectorAll('h1, h2, h3'))
     .filter(visible)

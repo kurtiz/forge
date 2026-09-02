@@ -27,7 +27,8 @@ export function useRunStream({
   runId: string
   status: RunStatus
   initialEvents: RunEvent[]
-  onFinished: () => void
+  /** Awaited, so a slow refresh cannot be raced by the next event. */
+  onFinished: () => void | Promise<void>
 }) {
   const [events, setEvents] = useState<RunEvent[]>(initialEvents)
   const [currentStatus, setCurrentStatus] = useState<RunStatus>(status)
@@ -96,7 +97,7 @@ export function useRunStream({
       finished.current = true
       setLive(false)
       source.close()
-      onFinished()
+      void onFinished()
     }
 
     return () => {

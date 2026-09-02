@@ -106,6 +106,9 @@ function scoreElement(
    * having opened a menu. An accessible name also arrives with the newlines of
    * whatever markup produced it, so it is flattened before matching.
    */
+  // A control the page will not accept cannot advance a journey.
+  if (element.disabled) return 0
+
   const haystack = element.name.toLowerCase().replace(/\s+/g, ' ').trim()
   if (!haystack) return 0
 
@@ -194,7 +197,29 @@ export function findSubmitControl(
     elements.find(
       (element) =>
         element.role === 'button' &&
+        !element.disabled &&
         !used.has(element.ref) &&
+        SUBMIT_WORDS.test(element.name) &&
+        !DESTRUCTIVE_WORDS.test(element.name),
+    ) ?? null
+  )
+}
+
+/**
+ * The submit control the page is refusing to enable.
+ *
+ * Looked for only once nothing usable was found, because it turns "this
+ * application offers no way to submit the form" into what is actually true:
+ * the form was not accepted as complete, and here is the button that says so.
+ */
+export function findDisabledSubmitControl(
+  elements: PageElement[],
+): PageElement | null {
+  return (
+    elements.find(
+      (element) =>
+        element.role === 'button' &&
+        element.disabled === true &&
         SUBMIT_WORDS.test(element.name) &&
         !DESTRUCTIVE_WORDS.test(element.name),
     ) ?? null
@@ -365,7 +390,10 @@ export async function runJourney(
     // Fill before activating: a form submitted with empty required fields
     // tests the validation, not the journey.
     const fields = observation.elements.filter(
-      (e) => (e.role === 'input' || e.role === 'textarea') && !filledRefs.has(e.ref),
+      (e) =>
+        (e.role === 'input' || e.role === 'textarea') &&
+        !e.disabled &&
+        !filledRefs.has(e.ref),
     )
 
     for (const field of fields.slice(0, 8)) {
@@ -432,6 +460,35 @@ export async function runJourney(
        * control from one this rule failed to recognise.
        */
       if (justFilled || (filledRefs.size > 0 && !submitted)) {
+        /*
+         * A disabled submit is a different answer from a missing one. The
+         * application rendered the way to finish and refused to enable it,
+         * which usually means a required field this run did not fill, or one
+         * it filled with something the form rejected. Either way that is a
+         * result about the application rather than a shrug about the page.
+         */
+        const blocked = findDisabledSubmitControl(observation.elements)
+        if (blocked) {
+          const unfilled = observation.elements
+            .filter((e) => e.required && !filledRefs.has(e.ref))
+            .map((e) => e.name.replace(/\s+/g, ' ').trim())
+            .filter(Boolean)
+            .slice(0, 5)
+
+          note(
+            'Submit form',
+            journey.name,
+            'The filled form can be submitted',
+            `The form was filled, but "${blocked.name}" is disabled, so the application does not consider it complete.${
+              unfilled.length > 0
+                ? ` Required and not filled: ${unfilled.join(', ')}.`
+                : ''
+            }`,
+            'skipped',
+          )
+          return done('skipped')
+        }
+
         const buttons = observation.elements
           .filter((e) => e.role === 'button')
           .map((e) => e.name.replace(/\s+/g, ' ').trim())

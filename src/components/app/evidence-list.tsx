@@ -2,8 +2,9 @@
  * Evidence list.
  *
  * Artifacts are grouped by kind and always link through the API rather than to
- * R2, so ownership is checked on every fetch. Screenshots render inline because
- * that is the one artifact people actually look at.
+ * R2, so ownership is checked on every fetch. Screenshots get a filmstrip and a
+ * viewer of their own, because they are the one artifact people actually look
+ * at and a run produces them in a sequence.
  */
 import {
   BracketsCurlyIcon,
@@ -14,6 +15,7 @@ import {
   TerminalWindowIcon,
 } from '@phosphor-icons/react'
 import type { Evidence, EvidenceKind } from '#/server/contracts'
+import { ScreenshotCarousel } from './screenshot-carousel'
 import { RelativeTime } from './relative-time'
 
 const ICON: Record<EvidenceKind, React.ComponentType<{ size?: number }>> = {
@@ -41,30 +43,7 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
 
   return (
     <div className="grid gap-6">
-      {screenshots.length > 0 ? (
-        <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-3">
-          {screenshots.map((shot) => (
-            <li key={shot.id}>
-              <a
-                href={`/api/evidence/${shot.id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="block overflow-hidden rounded-lg border border-kumo-hairline no-underline transition-colors hover:border-kumo-line"
-              >
-                <img
-                  src={`/api/evidence/${shot.id}`}
-                  alt={shot.label}
-                  loading="lazy"
-                  className="image-frame block aspect-[16/10] w-full bg-kumo-recessed object-cover object-top"
-                />
-                <span className="block truncate px-2.5 py-2 text-xs text-kumo-subtle">
-                  {shot.label}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <ScreenshotCarousel shots={screenshots} />
 
       {rest.length > 0 ? (
         <ul className="m-0 list-none divide-y divide-kumo-hairline p-0">

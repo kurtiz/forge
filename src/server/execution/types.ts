@@ -18,6 +18,12 @@ export type PageElement = {
   href?: string
   inputType?: string
   required?: boolean
+  /**
+   * Present and true when the page renders the control but will not let it be
+   * used. Reported rather than hidden: "the submit button is disabled" is a
+   * finding, and "there is no submit button" is a different and wrong one.
+   */
+  disabled?: boolean
 }
 
 /** Compact page state. Never the raw HTML - that is captured as evidence. */
