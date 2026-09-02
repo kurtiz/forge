@@ -29,6 +29,30 @@ describe('classifyFailure', () => {
     expect(classifyFailure(signal({ status: 404 }))).toBe('APPLICATION_BUG')
   })
 
+  it('does not blame the application for a 404 on a path Forge invented', () => {
+    // Discovery may propose a path nothing linked to. The application
+    // answering 404 about a URL it never claimed is correct behaviour, and
+    // reporting it as a defect is the false positive this product cannot
+    // afford.
+    expect(classifyFailure(signal({ status: 404, inventedPath: true }))).toBe(
+      'AGENT_ERROR',
+    )
+  })
+
+  it('still blames the application for a broken link it published', () => {
+    expect(classifyFailure(signal({ status: 404, inventedPath: false }))).toBe(
+      'APPLICATION_BUG',
+    )
+  })
+
+  it('calls a login form shown to a signed-in session an application bug', () => {
+    // Distinct from an auth wall, which is Forge arriving without credentials.
+    expect(classifyFailure(signal({ staleAuth: true }))).toBe('APPLICATION_BUG')
+    expect(classifyFailure(signal({ staleAuth: true, authWall: true }))).toBe(
+      'APPLICATION_BUG',
+    )
+  })
+
   it('treats an uncaught page error as an application bug', () => {
     expect(
       classifyFailure(signal({ consoleErrors: ['TypeError: x is undefined'] })),

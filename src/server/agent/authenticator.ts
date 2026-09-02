@@ -106,6 +106,28 @@ export function looksLikeLoginPage(observation: PageObservation): boolean {
 }
 
 /**
+ * Whether a sign-in worked, judged from where it ended up.
+ *
+ * Two signals, and the order matters. Displacement comes first: an application
+ * that answers a sign-in by sending the browser somewhere else has accepted the
+ * credentials, whatever the new page contains. Only when the browser is still
+ * standing on the login path does the presence of a password field mean
+ * rejection.
+ *
+ * Testing the password field alone, which is what this used to do, calls a
+ * successful sign-in a failure on any application that keeps serving its login
+ * form to signed-in visitors instead of redirecting them away.
+ */
+export function signInSucceeded(
+  after: PageObservation,
+  loginPath: string,
+): boolean {
+  if (after.status >= 400) return false
+  if (pathOf(after.url) !== pathOf(loginPath)) return true
+  return !looksLikeLoginPage(after)
+}
+
+/**
  * Whether a journey ran into a login wall.
  *
  * The discriminator is the journey's own intent, not the URL. Displacement is
@@ -196,16 +218,6 @@ export async function signIn(
 
   const after = submitted.ok ? submitted.observation : await executor.readPage()
 
-  if (looksLikeLoginPage(after)) {
-    // Still on a password form: the credentials were rejected, or a second
-    // factor is being asked for. Either way Forge cannot get in.
-    return {
-      ok: false,
-      detail: `Still on a login form after signing in as ${credentials.username}. The test account may be wrong, or the application may require a second factor.`,
-      landing: null,
-    }
-  }
-
   if (after.status >= 400) {
     return {
       ok: false,
@@ -214,9 +226,19 @@ export async function signIn(
     }
   }
 
+  if (!signInSucceeded(after, credentials.loginPath)) {
+    // Still standing on the login path with a password field in front of us:
+    // the credentials were rejected, or a second factor is being asked for.
+    return {
+      ok: false,
+      detail: `Still on a login form at ${credentials.loginPath} after signing in as ${credentials.username}. The test account may be wrong, or the application may require a second factor.`,
+      landing: null,
+    }
+  }
+
   return {
     ok: true,
-    detail: `Signed in as ${credentials.username}.`,
+    detail: `Signed in as ${credentials.username}. The application moved to ${pathOf(after.url)}.`,
     landing: after,
   }
 }

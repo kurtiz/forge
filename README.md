@@ -168,6 +168,20 @@ To run against a real browser, add a Solari key to `.dev.vars`:
 SOLARI_API_KEY="sk_..."
 ```
 
+Workers AI has no local simulator, so its binding is marked `remote` and the
+model calls in development go to the real service. That needs an account named:
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=<id> pnpm dev     # real model calls
+pnpm dev                                # offline, heuristic agents
+```
+
+`wrangler whoami` lists the ids. Only the AI binding is remote; D1, R2, and the
+Durable Object stay local either way. The account id is what switches remote
+bindings on at all, because a login that can see several accounts cannot pick
+one on its own, and an unconditional remote binding stops `pnpm dev` from
+starting rather than degrading to local.
+
 Runs then get JavaScript execution, screenshots, console and network capture,
 and a session replay link on the finding.
 

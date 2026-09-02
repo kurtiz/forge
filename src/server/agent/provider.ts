@@ -15,7 +15,7 @@ export { extractJson } from './json'
  * Redacts API keys, tokens, and long strings.
  */
 function redactForLog(text: string, maxLength = 500): string {
-  let redacted = text
+  let redacted = String(text)
     .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [REDACTED]')
     .replace(/api[_-]?key['":\s]*['"][^'"]+['"]/gi, 'api_key: [REDACTED]')
     .replace(/token['":\s]*['"][^'"]+['"]/gi, 'token: [REDACTED]')
@@ -23,6 +23,37 @@ function redactForLog(text: string, maxLength = 500): string {
     redacted = redacted.slice(0, maxLength) + '... [truncated]'
   }
   return redacted
+}
+
+/**
+ * Coerces a Workers AI result to text.
+ *
+ * `response` is documented as a string and is not always one: a model that
+ * decides to answer with structured output puts an object there, and the
+ * caller - which only ever wants text to pull JSON out of - used to take
+ * `.replace` to it and throw `text.replace is not a function` inside the try
+ * that wraps discovery. The run then silently dropped to heuristic journeys
+ * with a model that was working perfectly well.
+ *
+ * Anything that is not a string is stringified rather than discarded, because
+ * an object here is usually the answer already parsed.
+ */
+export function asText(result: unknown): string {
+  if (typeof result === 'string') return result
+  if (result === null || typeof result !== 'object') return ''
+
+  const response = (result as { response?: unknown }).response
+  if (typeof response === 'string') return response
+  if (response !== undefined && response !== null) {
+    return typeof response === 'object' ? JSON.stringify(response) : String(response)
+  }
+
+  // Some models answer in the OpenAI shape even through the Workers AI binding.
+  const choice = (result as { choices?: Array<{ message?: { content?: unknown } }> })
+    .choices?.[0]?.message?.content
+  if (typeof choice === 'string') return choice
+
+  return ''
 }
 
 export type ModelTask = 'discovery' | 'judging'
@@ -48,10 +79,17 @@ export interface ModelProvider {
 class WorkersAiProvider implements ModelProvider {
   readonly available = true
 
-  private modelFor(task: ModelTask): string {
-    return task === 'judging'
-      ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
-      : '@cf/meta/llama-3.1-8b-instruct-fast'
+  /**
+   * Both tasks get the larger model.
+   *
+   * Discovery used to run on llama-3.1-8b-instruct-fast, and it is the wrong
+   * place to save: it happens once per run, it has to emit JSON that survives
+   * schema validation, and everything the run then spends its budget on comes
+   * from its answer. A cheap model that produces unparseable output drops the
+   * run to heuristic journeys, which costs far more than the call it saved.
+   */
+  private modelFor(_task: ModelTask): string {
+    return '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
   }
 
   async generate(input: ModelInput): Promise<ModelOutput> {
@@ -65,11 +103,11 @@ class WorkersAiProvider implements ModelProvider {
       ],
       max_tokens: input.maxTokens ?? 900,
       temperature: 0.2,
-    } as never)) as { response?: string }
+    } as never)) as unknown
 
-    const responseText = result.response ?? ''
+    const responseText = asText(result)
     console.debug(`[provider] Raw response (${responseText.length} chars): ${redactForLog(responseText)}`)
-    
+
     return { text: responseText, model }
   }
 }

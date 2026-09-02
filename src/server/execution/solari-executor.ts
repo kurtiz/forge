@@ -65,7 +65,23 @@ const ENDPOINTS = {
   release: (id: string) => `/sessions/${encodeURIComponent(id)}`,
 }
 
-const SETTLE_MS = 900
+/**
+ * How long the page is given to stop changing after an action.
+ *
+ * A fixed pause was the original approach and it was the wrong one. A sign-in
+ * that posts credentials, waits for a response, and then redirects takes longer
+ * than any pause anyone would want to hard-code, so the page was read while the
+ * login form was still on screen and a successful sign-in was reported as a
+ * rejected one. These bound a wait that ends when the page actually goes quiet.
+ */
+/** Minimum wait, so a synchronous DOM update is never read mid-write. */
+const SETTLE_MIN_MS = 250
+/** How long the network has to stay quiet before the page counts as settled. */
+const SETTLE_QUIET_MS = 500
+/** Hard ceiling. A page that never goes quiet is read as it stands. */
+const SETTLE_MAX_MS = 8_000
+/** Poll interval while waiting for quiet. */
+const SETTLE_POLL_MS = 100
 
 type ObservedPayload = {
   url: string
@@ -86,6 +102,11 @@ export class SolariBrowserExecutor implements BrowserExecutor {
   private consoleErrors: string[] = []
   private networkErrors: string[] = []
   private documentStatus = 0
+
+  /** Requests started but not yet finished, from the CDP network events. */
+  private inFlight = 0
+  /** When the page last did anything. Drives the quiet-period wait. */
+  private lastActivityAt = Date.now()
 
   private constructor(private readonly config: SolariConfig) {}
 
@@ -172,8 +193,40 @@ export class SolariBrowserExecutor implements BrowserExecutor {
     await cdp.send('Log.enable', {}, sessionId)
   }
 
+  /**
+   * Marks the page as busy.
+   *
+   * Every network request, navigation, and load event pushes the quiet point
+   * forward, which is what lets `settle` wait for a redirect chain to finish
+   * instead of guessing how long one takes.
+   */
+  private touch() {
+    this.lastActivityAt = Date.now()
+  }
+
   /** Collects the runtime signals a finding is later judged against. */
   private recordEvent(method: string, params: Record<string, unknown>) {
+    switch (method) {
+      case 'Network.requestWillBeSent':
+        this.inFlight++
+        this.touch()
+        break
+      case 'Network.loadingFinished':
+      case 'Network.loadingFailed':
+        this.inFlight = Math.max(0, this.inFlight - 1)
+        this.touch()
+        break
+      case 'Page.frameStartedLoading':
+      case 'Page.frameNavigated':
+      case 'Page.loadEventFired':
+      case 'Page.domContentEventFired':
+      case 'Page.frameStoppedLoading':
+        this.touch()
+        break
+      default:
+        break
+    }
+
     if (method === 'Runtime.exceptionThrown') {
       const details = params.exceptionDetails as
         | { text?: string; exception?: { description?: string } }
@@ -256,7 +309,7 @@ export class SolariBrowserExecutor implements BrowserExecutor {
       { url: target.toString() },
       this.cdpSessionId!,
     )
-    await settle()
+    await this.settle()
 
     const observation = await this.readPage()
     return {
@@ -313,7 +366,7 @@ export class SolariBrowserExecutor implements BrowserExecutor {
       }
     }
 
-    await settle()
+    await this.settle()
     const observation = await this.readPage()
     return {
       ok:
@@ -371,11 +424,32 @@ export class SolariBrowserExecutor implements BrowserExecutor {
     this.consoleErrors = []
     this.networkErrors = []
     this.documentStatus = 0
+    // In-flight requests are deliberately not reset: a request still running
+    // from before the action is still a reason to keep waiting.
+    this.touch()
+  }
+
+  /**
+   * Waits for the page to stop changing.
+   *
+   * Quiet means no request has started or finished for `SETTLE_QUIET_MS` and
+   * nothing is in flight. Capped, because a page that polls forever never goes
+   * quiet and is better read as it stands than waited on indefinitely.
+   */
+  private async settle(): Promise<void> {
+    const startedAt = Date.now()
+    await sleep(SETTLE_MIN_MS)
+
+    while (Date.now() - startedAt < SETTLE_MAX_MS) {
+      const quietFor = Date.now() - this.lastActivityAt
+      if (this.inFlight === 0 && quietFor >= SETTLE_QUIET_MS) return
+      await sleep(SETTLE_POLL_MS)
+    }
   }
 }
 
-function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function decodeBase64(data: string): Uint8Array {

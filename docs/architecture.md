@@ -160,6 +160,43 @@ means a finding always has a defensible non-model baseline. If the model is
 unreachable, the run still produces useful output; it just gets heuristic
 journeys and rule-written narratives, and the UI says which.
 
+## Reading a page at the right moment
+
+Every action is followed by a wait for the page to go quiet: no request has
+started or finished for half a second and nothing is in flight, bounded by a
+hard ceiling of eight seconds. It replaced a flat pause, which was wrong in a
+way worth remembering.
+
+A sign-in posts credentials, waits for a response, and then redirects. A fixed
+pause that ends before the redirect reads the login form that is still on
+screen, so the executor reported a successful sign-in as a rejected one, and
+every journey after it ran signed out. No amount of tuning the number fixes
+that; the wait has to end on an observation rather than a guess.
+
+The same reasoning applies to how a sign-in is judged. Displacement comes
+first: an application that answers a sign-in by sending the browser somewhere
+else has accepted the credentials, whatever the new page contains. Only when
+the browser is still standing on the login path does a password field mean
+rejection. Testing the field alone calls a successful sign-in a failure on any
+application that keeps serving its login form to signed-in visitors.
+
+## Where a journey starts
+
+Discovery reasons about the elements of one page, so a journey belongs on that
+page unless it names somewhere that page links to. `anchorJourneys` enforces
+that: a proposed entry path that is neither the current path nor a link on the
+page is replaced by the current path.
+
+Without it, a model exploring a tenant-scoped application proposes `/dashboard`
+for a dashboard that lives at `/acme/dashboard`. The guess either 404s, which
+Forge would go on to blame the application for, or answers 200 with an
+unrelated page where no control matches and the journey is skipped. Both waste
+the run.
+
+The guard behind that guard is in classification: a 404 on a path Forge
+invented is an `AGENT_ERROR`, not an application defect. A 404 on a path the
+application itself linked stays a defect, because a broken link is one.
+
 ## Executors
 
 `BrowserExecutor` is Forge's interface. Providers implement it.

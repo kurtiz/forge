@@ -27,10 +27,36 @@ export type FailureSignal = {
   executorError?: boolean
   /** The step could not proceed because the app demanded credentials. */
   authWall?: boolean
+  /**
+   * The application asked a signed-in visitor to sign in again.
+   *
+   * Distinct from `authWall`, which is Forge arriving without credentials. This
+   * is Forge arriving *with* an established session and being shown the login
+   * form anyway: either the session did not persist, or the application serves
+   * its login page to signed-in users instead of sending them onward. Both are
+   * the application's behaviour, and reproduction is what separates them.
+   */
+  staleAuth?: boolean
+  /**
+   * The journey's entry path was Forge's guess, not the application's link.
+   *
+   * Discovery is allowed to propose a path that no element pointed at - the
+   * model infers one from page text, and the heuristics infer one from words
+   * like "dashboard". When such a path 404s, the application is answering
+   * correctly about a URL it never claimed to have, and reporting that as a
+   * defect is exactly the false positive this product cannot afford. A 404 on a
+   * path the application itself linked stays a defect.
+   */
+  inventedPath?: boolean
 }
 
 export function classifyFailure(signal: FailureSignal): FailureClass {
   if (signal.executorError) return 'BROWSER_FAILURE'
+  // Before every status rule: a 404 on a URL Forge made up is Forge's mistake.
+  if (signal.inventedPath && signal.status === 404) return 'AGENT_ERROR'
+  // Checked before `authWall`: a session Forge established and the application
+  // ignored is the application's defect, not a missing credential.
+  if (signal.staleAuth) return 'APPLICATION_BUG'
   if (signal.authWall) return 'AUTH_FAILURE'
   if (signal.transportError) return 'NETWORK_FAILURE'
   if (signal.timedOut) return 'TIMEOUT'

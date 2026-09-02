@@ -4,6 +4,7 @@ import {
   looksLikeLoginPage,
   pathOf,
   selectLoginFields,
+  signInSucceeded,
 } from '#/server/agent/authenticator'
 import type { PageElement, PageObservation } from '#/server/execution/types'
 
@@ -152,5 +153,73 @@ describe('pathOf', () => {
     expect(pathOf('https://a.test/checkout/?x=1')).toBe('/checkout')
     expect(pathOf('/checkout')).toBe('/checkout')
     expect(pathOf('/')).toBe('/')
+  })
+})
+
+describe('signInSucceeded', () => {
+  const password = input({ ref: 'p', inputType: 'password', name: 'Password' })
+
+  it('accepts a sign-in that moved the browser somewhere else', () => {
+    expect(
+      signInSucceeded(
+        observation({ url: 'https://app.example.com/dashboard' }),
+        '/login',
+      ),
+    ).toBe(true)
+  })
+
+  it('accepts it even when the destination also has a password field', () => {
+    // A dashboard with a "change password" form is still a dashboard. The
+    // displacement is the signal, not the field.
+    expect(
+      signInSucceeded(
+        observation({
+          url: 'https://app.example.com/settings',
+          elements: [password],
+        }),
+        '/login',
+      ),
+    ).toBe(true)
+  })
+
+  it('rejects a sign-in that is still standing on the login form', () => {
+    expect(
+      signInSucceeded(
+        observation({
+          url: 'https://app.example.com/login',
+          elements: [password],
+        }),
+        '/login',
+      ),
+    ).toBe(false)
+  })
+
+  it('accepts a login page that dropped its form without redirecting', () => {
+    expect(
+      signInSucceeded(observation({ url: 'https://app.example.com/login' }), '/login'),
+    ).toBe(true)
+  })
+
+  it('rejects an error status whatever the page shows', () => {
+    expect(
+      signInSucceeded(
+        observation({ url: 'https://app.example.com/dashboard', status: 500 }),
+        '/login',
+      ),
+    ).toBe(false)
+  })
+
+  it('compares paths, not URLs', () => {
+    // A login page that comes back with ?error= or a trailing slash is the same
+    // page, and must not be mistaken for a redirect away from it.
+    expect(
+      signInSucceeded(
+        observation({
+          url: 'https://app.example.com/login/?error=1',
+          elements: [password],
+        }),
+        '/login',
+      ),
+    ).toBe(false)
   })
 })

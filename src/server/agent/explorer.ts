@@ -24,6 +24,76 @@ export type ExplorationResult = {
   model: string | null
 }
 
+/** The path part of a page's URL, always absolute, never with a trailing slash. */
+export function currentPath(observation: PageObservation): string {
+  try {
+    const path = new URL(observation.url).pathname
+    return path.length > 1 ? path.replace(/\/+$/, '') : '/'
+  } catch {
+    return '/'
+  }
+}
+
+/**
+ * Every path the page links to, deduplicated and in document order.
+ *
+ * Only http and https links count. `javascript:void(0)` and `mailto:` parse
+ * happily and yield a pathname - "void(0)" in the first case - which would then
+ * be offered to the model as somewhere it could send a journey.
+ */
+export function offeredPaths(observation: PageObservation): string[] {
+  const paths = new Set<string>()
+  for (const element of observation.elements) {
+    if (!element.href) continue
+    try {
+      const url = new URL(element.href, observation.url)
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') continue
+      const path = url.pathname
+      paths.add(path.length > 1 ? path.replace(/\/+$/, '') : '/')
+    } catch {
+      // A malformed href offers nothing.
+    }
+  }
+  return [...paths]
+}
+
+/**
+ * Pins each journey to a page that exists.
+ *
+ * A journey is derived from the elements of one page, so it belongs on that
+ * page unless it names somewhere that page links to. Anything else is a guess,
+ * and a guess is either a 404 Forge would go on to blame the application for,
+ * or a 200 on an unrelated page where no control matches and the journey is
+ * skipped. Both waste the run; the second is what a tenant-scoped application
+ * does to a model that proposed `/dashboard`.
+ */
+export function anchorJourneys(
+  journeys: readonly DiscoveredJourney[],
+  observation: PageObservation,
+): DiscoveredJourney[] {
+  const here = currentPath(observation)
+  const offered = new Set(offeredPaths(observation))
+  offered.add(here)
+
+  return journeys.map((journey) => {
+    const proposed = journey.entryPath?.trim()
+    if (!proposed) return { ...journey, entryPath: here }
+
+    const normalised = proposed.startsWith('/') ? proposed : `/${proposed}`
+    const withoutSlash =
+      normalised.length > 1 ? normalised.replace(/\/+$/, '') : '/'
+
+    if (offered.has(withoutSlash)) return { ...journey, entryPath: withoutSlash }
+
+    /*
+     * A path nothing pointed at. Preferring the page in front of us over the
+     * model's guess is the conservative choice: the controls it reasoned about
+     * are here.
+     */
+    return { ...journey, entryPath: here }
+  })
+}
+
 export async function discoverJourneys(
   provider: ModelProvider,
   observation: PageObservation,
@@ -33,7 +103,7 @@ export async function discoverJourneys(
 ): Promise<ExplorationResult> {
   const heuristic = heuristicJourneys(observation)
   const rank = (journeys: readonly DiscoveredJourney[]) =>
-    rankJourneys(journeys, limit, options)
+    rankJourneys(anchorJourneys(journeys, observation), limit, options)
 
   if (!provider.available) {
     console.debug('[explorer] Provider not available, using heuristic-only discovery')
@@ -103,6 +173,23 @@ function describe(
   if (links.length) {
     lines.push(`Links: ${links.map((l) => l.name).slice(0, 25).join(' | ')}`)
   }
+
+  /*
+   * The paths this page actually links to, and the one it is on.
+   *
+   * Without them the model guesses site-root paths - `/dashboard` for an
+   * application whose dashboard is at `/acme/dashboard` - and every journey
+   * starts on the wrong page. Naming the current path matters just as much:
+   * after a sign-in the interesting page is rarely the site root.
+   */
+  const offered = offeredPaths(observation)
+  lines.push(`Current path: ${currentPath(observation)}`)
+  if (offered.length > 0) {
+    lines.push(`Paths linked from this page: ${offered.slice(0, 25).join(' ')}`)
+  }
+  lines.push(
+    'Set entryPath to the current path, or to one of the linked paths above. Never invent a path; a URL this application did not offer is not a journey.',
+  )
   if (buttons.length) {
     lines.push(`Buttons: ${buttons.map((b) => b.name).slice(0, 20).join(' | ')}`)
   }
@@ -279,17 +366,34 @@ function inferSubPages(
   const lowerText = text.toLowerCase()
   const results: Array<{ label: string; path: string }> = []
 
+  /**
+   * Appends a segment to the current path, unless the page is already there.
+   *
+   * Without the guard, exploring `/acme/dashboard` and seeing the word
+   * "dashboard" in its own heading proposes `/acme/dashboard/dashboard`, which
+   * 404s. Forge then has a reproducible failure against a URL it invented,
+   * which is the worst thing a verifier can produce.
+   */
+  const under = (segment: string): string | null => {
+    const base = currentPath.replace(/\/+$/, '')
+    if (base.split('/').includes(segment)) return null
+    return base === '' ? `/${segment}` : `${base}/${segment}`
+  }
+
   // If text mentions "sign in" or "login", navigate to a login path
   if (/sign\s*in|log\s*in|login/i.test(lowerText)) {
-    // Try the current path + /login first
-    const loginPath = currentPath === '/' ? '/login' : `${currentPath}/login`
-    results.push({ label: 'Navigate to login page', path: loginPath })
+    const loginPath = under('login')
+    if (loginPath) {
+      results.push({ label: 'Navigate to login page', path: loginPath })
+    }
   }
 
   // If text mentions "dashboard" or "admin"
   if (/dashboard|admin|manage/i.test(lowerText)) {
-    const dashPath = currentPath === '/' ? '/dashboard' : `${currentPath}/dashboard`
-    results.push({ label: 'Navigate to dashboard', path: dashPath })
+    const dashPath = under('dashboard')
+    if (dashPath) {
+      results.push({ label: 'Navigate to dashboard', path: dashPath })
+    }
   }
 
   return results

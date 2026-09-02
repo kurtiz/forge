@@ -21,7 +21,8 @@ import type {
 } from '../execution/types'
 import type { FailureSignal } from '../domain/analysis'
 import type { DiscoveredJourney } from '../contracts'
-import { detectAuthWall } from './authenticator'
+import { detectAuthWall, looksLikeLoginPage } from './authenticator'
+import { isAuthJourney } from '../domain/analysis'
 
 export type OperatorStep = {
   sequence: number
@@ -80,17 +81,52 @@ function scoreElement(
   journey: DiscoveredJourney,
   currentUrl: string,
 ): number {
-  const haystack = element.name.toLowerCase()
+  /*
+   * Whole words only, against a name with its whitespace collapsed.
+   *
+   * Substring matching is how "Refer a patient" comes to click a profile chip
+   * reading "Joey Benson, Referring doctor": "refer" is inside "referring", the
+   * chip is the only thing that matched, and the journey reports a pass for
+   * having opened a menu. An accessible name also arrives with the newlines of
+   * whatever markup produced it, so it is flattened before matching.
+   */
+  const haystack = element.name.toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!haystack) return 0
+
+  const words = new Set(haystack.split(/[^a-z0-9]+/).filter(Boolean))
   const needles = `${journey.name} ${journey.goal}`
     .toLowerCase()
     .split(/[^a-z]+/)
     .filter((w) => w.length > 3)
 
-  let score = 0
+  let matched = 0
   for (const needle of needles) {
-    if (haystack.includes(needle)) score += 2
+    if (words.has(needle)) matched++
   }
-  if (score === 0) return 0
+  if (matched === 0) return 0
+
+  /*
+   * The control has to be mostly about this journey, not merely mention it.
+   *
+   * Counting shared words alone picks the wrong control on a real application:
+   * a journey to view referrals shares "referring" and "doctor" with a profile
+   * chip reading "JB / Joey Benson / Referring doctor", so the journey clicks
+   * an account menu and reports a pass. Coverage is the discriminator - how
+   * much of the control's own label the journey accounts for. The chip scores
+   * two words out of five; "Referrals" and "Toggle Sidebar" score everything
+   * they have.
+   */
+  const coverage = matched / words.size
+  if (coverage < 0.5) return 0
+
+  let score = matched * 2
+
+  /*
+   * Prefer the control that is mostly about this journey. A short exact label
+   * beats a long one that happens to contain the same word, which is usually
+   * navigation or account chrome rather than the thing under test.
+   */
+  if (words.size <= 4) score += 2
 
   if (element.role === 'button') {
     score += 6
@@ -113,7 +149,9 @@ export async function runJourney(
   baseUrl: string,
   journey: DiscoveredJourney,
   budget: Budget,
+  options: { authenticated?: boolean } = {},
 ): Promise<JourneyRun> {
+  const authenticated = options.authenticated ?? false
   const steps: OperatorStep[] = []
   const trace: string[] = []
   const signal: FailureSignal = { consoleErrors: [], networkErrors: [] }
@@ -142,7 +180,10 @@ export async function runJourney(
     // A login form on a page the journey did not navigate to means the app
     // moved us to a wall. Without this a 200 redirect to /login is invisible
     // and gets reported as an application defect.
-    if (detectAuthWall(result.observation, journey)) {
+    if (authenticated && looksLikeLoginPage(result.observation)) {
+      // Signed in, and the application is asking again.
+      signal.staleAuth = true
+    } else if (detectAuthWall(result.observation, journey)) {
       signal.authWall = true
     }
     for (const error of result.observation.consoleErrors) {
@@ -160,6 +201,46 @@ export async function runJourney(
   budget.spend('browserActions')
   const opened = await executor.navigate(entryUrl)
   if (!record('Navigate', journey.entryPath, 'Page loads without an error status', opened)) {
+    return { outcome: 'failed', steps, trace, signal, finalObservation }
+  }
+
+  /*
+   * A login form is not a form to fill with synthetic data.
+   *
+   * Typing invented credentials into one achieves nothing at best. At worst it
+   * signs the run out of the session the authenticator established, or trips
+   * the application's failed-attempt lockout on the very account the operator
+   * of this project supplied. The credentials Forge holds belong to the
+   * authenticator, which types them once, structurally, and never shows them to
+   * the model - so the Operator's answer to a login form is to leave it alone
+   * and report what it found.
+   *
+   * The one case where filling is right is a journey whose whole point is to
+   * authenticate - a sign-up flow - on a run that is not already signed in.
+   */
+  const isLoginForm = looksLikeLoginPage(opened.observation)
+  const mayFillLoginForm =
+    !authenticated && isAuthJourney(journey.name, journey.goal)
+
+  if (isLoginForm && !mayFillLoginForm) {
+    steps.push({
+      sequence: ++sequence,
+      action: 'Inspect form',
+      target: journey.name,
+      expected: authenticated
+        ? 'A signed-in visitor is not asked to sign in again'
+        : `A control matching "${journey.name}" is present`,
+      actual: authenticated
+        ? 'This page asked for credentials again even though the run is already signed in. The session did not carry, or the application serves its login page to signed-in users.'
+        : 'A sign-in form is in the way: the application requires a login this run does not have.',
+      status: 'failed',
+    })
+    trace.push(
+      `Inspect form "${journey.name}" -> ${
+        authenticated ? 'asked to sign in again' : 'blocked by sign-in'
+      }`,
+    )
+    if (!authenticated) signal.authWall = true
     return { outcome: 'failed', steps, trace, signal, finalObservation }
   }
 

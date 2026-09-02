@@ -32,6 +32,8 @@ const element = (patch: Partial<PageElement> & { ref: string }): PageElement => 
 class StubExecutor implements BrowserExecutor {
   readonly kind = 'fetch' as const
   readonly sessionId = null
+  /** Values typed into the page, so a test can assert nothing was typed. */
+  readonly filled: Array<{ ref: string; value: string }> = []
 
   constructor(private readonly observation: PageObservation) {}
 
@@ -48,7 +50,8 @@ class StubExecutor implements BrowserExecutor {
   async click() {
     return this.result('Clicked')
   }
-  async fill() {
+  async fill(ref: string, value: string) {
+    this.filled.push({ ref, value })
     return this.result('Filled')
   }
   async submit() {
@@ -108,6 +111,141 @@ describe('runJourney', () => {
 
     expect(run.outcome).toBe('failed')
     expect(run.signal.authWall).toBe(true)
+  })
+
+  it('refuses to type invented credentials into a login form', async () => {
+    /*
+     * The failure this guards against: the Operator filled a signed-in session's
+     * login form with synthetic values, which at best wastes the run and at
+     * worst signs it out or trips the account's lockout.
+     */
+    const executor = new StubExecutor(
+      page({
+        url: 'https://app.example.com/login',
+        elements: [
+          element({ ref: 'e1', role: 'input', name: 'Email', inputType: 'email' }),
+          element({
+            ref: 'e2',
+            role: 'input',
+            name: 'Password',
+            inputType: 'password',
+          }),
+          element({ ref: 'e3', name: 'Sign in' }),
+        ],
+      }),
+    )
+
+    const run = await runJourney(
+      executor,
+      'https://app.example.com',
+      journey,
+      new Budget(DEFAULT_BUDGET),
+      { authenticated: true },
+    )
+
+    expect(run.outcome).toBe('failed')
+    expect(run.signal.staleAuth).toBe(true)
+    expect(executor.filled).toEqual([])
+    expect(run.steps.at(-1)?.actual).toContain('already signed in')
+  })
+
+  it('still fills a sign-up form on a run that is not signed in', async () => {
+    const executor = new StubExecutor(
+      page({
+        url: 'https://app.example.com/signup',
+        elements: [
+          element({ ref: 'e1', role: 'input', name: 'Email', inputType: 'email' }),
+          element({
+            ref: 'e2',
+            role: 'input',
+            name: 'Password',
+            inputType: 'password',
+          }),
+          element({ ref: 'e3', name: 'Create account' }),
+        ],
+      }),
+    )
+
+    await runJourney(
+      executor,
+      'https://app.example.com',
+      {
+        name: 'Create an account',
+        goal: 'Register a new account with an email and password',
+        priority: 0.8,
+        entryPath: '/signup',
+      },
+      new Budget(DEFAULT_BUDGET),
+    )
+
+    expect(executor.filled.length).toBe(2)
+  })
+
+  it('does not treat a word that merely contains the journey word as a match', async () => {
+    /*
+     * The failure this guards against: "Refer a patient" clicked a profile chip
+     * reading "Joey Benson Referring doctor", then reported a pass for having
+     * opened a menu.
+     */
+    const run = await runJourney(
+      new StubExecutor(
+        page({
+          elements: [
+            element({ ref: 'e1', name: 'JB\nJoey Benson\nReferring doctor' }),
+          ],
+        }),
+      ),
+      'https://app.example.com',
+      {
+        name: 'Refer a patient',
+        goal: 'Refer a patient to the diagnostic centre',
+        priority: 0.9,
+        entryPath: '/',
+      },
+      new Budget(DEFAULT_BUDGET),
+    )
+
+    expect(run.outcome).toBe('skipped')
+  })
+
+  it('ignores a label the journey only partly accounts for', async () => {
+    const run = await runJourney(
+      new StubExecutor(
+        page({
+          elements: [
+            element({ ref: 'e1', name: 'JB Joey Benson Referring doctor' }),
+          ],
+        }),
+      ),
+      'https://app.example.com',
+      {
+        name: 'View all referrals',
+        goal: 'See every referral made by the referring doctor',
+        priority: 0.7,
+        entryPath: '/',
+      },
+      new Budget(DEFAULT_BUDGET),
+    )
+
+    expect(run.outcome).toBe('skipped')
+  })
+
+  it('still matches a short label on a single word', async () => {
+    const run = await runJourney(
+      new StubExecutor(
+        page({ elements: [element({ ref: 'e1', name: 'Referrals' })] }),
+      ),
+      'https://app.example.com',
+      {
+        name: 'View all referrals',
+        goal: 'See every referral made by the referring doctor',
+        priority: 0.7,
+        entryPath: '/',
+      },
+      new Budget(DEFAULT_BUDGET),
+    )
+
+    expect(run.outcome).toBe('passed')
   })
 
   it('passes when the matching control is there and nothing breaks', async () => {

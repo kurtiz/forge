@@ -26,14 +26,25 @@ export default defineConfig({
     cloudflare({
       viteEnvironment: { name: 'ssr' },
       /**
-       * Workers AI has no local simulator, so enabling remote bindings would
-       * make `pnpm dev` require a Cloudflare login and an account selection.
-       * Forge degrades to its heuristic agents when no model is reachable, so
-       * local development stays offline by default. Set `remoteBindings: true`
-       * (and CLOUDFLARE_ACCOUNT_ID, if the login has several accounts) to
-       * exercise Workers AI locally.
+       * Remote bindings, and therefore Workers AI in development, switch on
+       * when CLOUDFLARE_ACCOUNT_ID names an account:
+       *
+       *   CLOUDFLARE_ACCOUNT_ID=<id> pnpm dev     # real model calls
+       *   pnpm dev                                # offline, heuristic agents
+       *
+       * Which bindings actually go remote is decided per binding in
+       * wrangler.jsonc, and only `ai` is marked, so D1, R2, and the Durable
+       * Object stay local either way.
+       *
+       * Tied to the account id rather than switched on outright because the
+       * plugin cannot pick between the accounts a login can see: on a login
+       * with several, unconditional remote bindings do not degrade to local,
+       * they stop `pnpm dev` from starting at all. `wrangler whoami` lists the
+       * ids. Without one, model calls fail and the agents fall back to their
+       * heuristics, which is a working run with worse journeys - a run never
+       * depends on a model being reachable.
        */
-      remoteBindings: false,
+      remoteBindings: Boolean(process.env.CLOUDFLARE_ACCOUNT_ID),
     }),
     tailwindcss(),
     tanstackStart(),

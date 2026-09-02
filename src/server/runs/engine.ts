@@ -32,7 +32,7 @@ import {
   type SourceInvestigator,
 } from '../investigation'
 import { discoverJourneys } from '../agent/explorer'
-import { signIn } from '../agent/authenticator'
+import { pathOf, signIn } from '../agent/authenticator'
 import { judgeFinding } from '../agent/judge'
 import { runJourney, type JourneyRun } from '../agent/operator'
 import { modelProvider } from '../agent/provider'
@@ -396,6 +396,23 @@ export async function executeRun(
       { source: exploration.source, model: exploration.model },
     )
 
+    /*
+     * The paths the application itself offered on the entry page.
+     *
+     * Discovery may propose a path nothing linked to, and the difference
+     * matters when that path 404s: a broken link the application published is
+     * a defect, a URL Forge invented is not.
+     */
+    const offeredPaths = new Set<string>([pathOf(entry.observation.url)])
+    for (const element of entry.observation.elements) {
+      if (!element.href) continue
+      try {
+        offeredPaths.add(pathOf(new URL(element.href, entry.observation.url).pathname))
+      } catch {
+        // A malformed href offers nothing.
+      }
+    }
+
     const journeys = []
     for (const discovered of exploration.journeys) {
       const journey = await repo.insertJourney({
@@ -445,6 +462,7 @@ export async function executeRun(
           input.targetUrl,
           journey.discovered,
           budget,
+          { authenticated },
         )
       } catch (error) {
         if (error instanceof BudgetExceededError) {
@@ -552,6 +570,12 @@ export async function executeRun(
       for (const failure of failures) {
         if (canceled()) break
 
+        // Marked here rather than in the Operator, which has no view of what
+        // the entry page offered.
+        if (!offeredPaths.has(pathOf(failure.journey.discovered.entryPath))) {
+          failure.result.signal.inventedPath = true
+        }
+
         const failureClass = classifyFailure(failure.result.signal)
         let attempts = 0
         let reproduced = 0
@@ -572,6 +596,7 @@ export async function executeRun(
               input.targetUrl,
               failure.journey.discovered,
               budget,
+              { authenticated },
             )
             // Only a repeat failure counts. A journey that could not be
             // attempted this time proves nothing either way.

@@ -61,7 +61,16 @@
 	],
 
 
-	"ai": { "binding": "AI" },
+	/**
+	 * Workers AI has no local simulator, so in `vite dev` this binding proxies to
+	 * the real account: without `remote`, every model call fails with "Binding AI
+	 * needs to be run remotely" and the agents silently fall back to heuristics.
+	 * It is the only binding marked remote. D1, R2, and the Durable Object stay
+	 * local, so development still runs against local data.
+	 *
+	 * It needs a Cloudflare login (`wrangler login`, or CLOUDFLARE_API_TOKEN).
+	 */
+	"ai": { "binding": "AI", "remote": true },
 
 	"analytics_engine_datasets": [
 		{
