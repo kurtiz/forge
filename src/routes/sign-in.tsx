@@ -10,7 +10,11 @@
 import { useState } from 'react'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { z } from 'zod'
-import { ArrowRightIcon, UserCircleDashedIcon } from '@phosphor-icons/react'
+import {
+  ArrowRightIcon,
+  GithubLogoIcon,
+  UserCircleDashedIcon,
+} from '@phosphor-icons/react'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Input } from '@cloudflare/kumo/components/input'
 import { ForgeMark } from '#/components/app/shell'
@@ -37,13 +41,16 @@ type Mode = 'sign-in' | 'sign-up'
 function SignIn() {
   const router = useRouter()
   const { upgrade } = Route.useSearch()
+  const { session } = Route.useRouteContext()
 
   const [mode, setMode] = useState<Mode>(upgrade ? 'sign-up' : 'sign-in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'guest' | 'credentials' | null>(null)
+  const [busy, setBusy] = useState<'guest' | 'github' | 'credentials' | null>(
+    null,
+  )
 
   async function afterAuth() {
     // The root route resolves the session in beforeLoad, so it has to re-run
@@ -62,6 +69,28 @@ function SignIn() {
       return
     }
     await afterAuth()
+  }
+
+  /**
+   * GitHub sign-in.
+   *
+   * Better Auth performs the redirect itself, so there is no `afterAuth` here:
+   * the browser leaves for GitHub and comes back to `callbackURL` with a
+   * session already established. `busy` is never cleared on the success path
+   * because the page is on its way out.
+   */
+  async function continueWithGitHub() {
+    setBusy('github')
+    setError(null)
+    const { error: failure } = await authClient.signIn.social({
+      provider: 'github',
+      callbackURL: '/dashboard',
+      errorCallbackURL: '/sign-in',
+    })
+    if (failure) {
+      setError(failure.message ?? 'GitHub sign-in could not start.')
+      setBusy(null)
+    }
   }
 
   async function submitCredentials(event: React.FormEvent) {
@@ -125,6 +154,41 @@ function SignIn() {
                 you cannot sign back into it once this browser forgets the session.
               </p>
 
+              {session.providers.github ? (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  className="mb-8 w-full"
+                  loading={busy === 'github'}
+                  disabled={busy !== null}
+                  onClick={continueWithGitHub}
+                  icon={<GithubLogoIcon size={16} />}
+                >
+                  Continue with GitHub
+                </Button>
+              ) : null}
+
+              <div className="mb-6 flex items-center gap-3">
+                <span className="h-px flex-1 bg-kumo-hairline" />
+                <span className="text-xs text-kumo-subtle">or use an email</span>
+                <span className="h-px flex-1 bg-kumo-hairline" />
+              </div>
+            </>
+          ) : null}
+
+          {upgrade && session.providers.github ? (
+            <>
+              <Button
+                variant="secondary"
+                size="lg"
+                className="mb-6 w-full"
+                loading={busy === 'github'}
+                disabled={busy !== null}
+                onClick={continueWithGitHub}
+                icon={<GithubLogoIcon size={16} />}
+              >
+                Continue with GitHub
+              </Button>
               <div className="mb-6 flex items-center gap-3">
                 <span className="h-px flex-1 bg-kumo-hairline" />
                 <span className="text-xs text-kumo-subtle">or use an email</span>

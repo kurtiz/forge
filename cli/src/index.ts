@@ -361,6 +361,7 @@ function printReport(report: RunReport): void {
 
   const passed = journeys.filter((j) => j.status === 'passed')
   const failed = journeys.filter((j) => j.status === 'failed')
+  const skipped = journeys.filter((j) => j.status === 'skipped')
 
   out(`${PASS} Application reachable`)
   out(
@@ -369,6 +370,11 @@ function printReport(report: RunReport): void {
   out(`${PASS} ${journeys.length} journeys discovered`)
   if (passed.length > 0) out(`${PASS} ${passed.length} journeys passed`)
   if (failed.length > 0) out(`${FAIL} ${failed.length} journeys failed`)
+  // Neither a pass nor a failure: nothing on the page matched, so nothing was
+  // verified. Printed so a green run cannot be read as more than it is.
+  if (skipped.length > 0) {
+    out(`${yellow('!')} ${skipped.length} journeys could not be attempted`)
+  }
 
   const bugs = findings.filter((f) => f.classification === 'confirmed_bug')
   const others = findings.filter((f) => f.classification !== 'confirmed_bug')
@@ -393,7 +399,11 @@ function printReport(report: RunReport): void {
 
   out('')
   if (bugs.length === 0) {
-    out(green('No confirmed defects.'))
+    out(
+      passed.length > 0
+        ? green('No confirmed defects.')
+        : yellow('No confirmed defects, but no journey was actually exercised.'),
+    )
   }
   out(dim('View:'))
   out(report.url)

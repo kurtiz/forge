@@ -102,6 +102,20 @@ describe('renderCheckReport', () => {
     expect(report.summary).toContain('did not fail this check')
   })
 
+  it('does not pass a check when no journey was actually attempted', () => {
+    // A green check has to mean the application was exercised. Otherwise it
+    // means "Forge found nothing to do", which a reviewer will read as "fine".
+    const report = renderCheckReport({
+      run: run(),
+      journeys: [journey('skipped'), journey('skipped', 'Sign up')],
+      findings: [],
+      baseUrl: BASE,
+    })
+
+    expect(report.conclusion).toBe('neutral')
+    expect(report.summary).toContain('could not be attempted')
+  })
+
   it('is inconclusive when the run itself failed', () => {
     const report = renderCheckReport({
       run: run({ status: 'failed' }),

@@ -47,6 +47,14 @@ APP_URL="http://localhost:3000"
 # The app's URL slug, so the console can link to its install page.
 # GITHUB_APP_SLUG="forge-verification"
 
+# Optional. GitHub sign-in for Forge itself. Separate from the App credentials
+# above: that app verifies pull requests, these identify a person. Create an
+# OAuth app (or reuse the GitHub App's client credentials) with the callback
+# URL <APP_URL>/api/auth/callback/github. Both are needed or the button is not
+# offered.
+# GITHUB_CLIENT_ID="Iv1...."
+# GITHUB_CLIENT_SECRET="..."
+
 # Repairs the seeded defects in the bundled demo app. Flip this to "1" to make
 # "Verify fix" pass on a finding you already have.
 # FORGE_DEMO_FIXED="1"

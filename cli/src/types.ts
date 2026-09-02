@@ -25,6 +25,7 @@ export const TERMINAL_STATUSES: readonly RunStatus[] = [
 export type Journey = {
   id: string
   name: string
+  /** `skipped` means nothing on the page matched it, so nothing was verified. */
   status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
 }
 

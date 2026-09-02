@@ -56,12 +56,13 @@ export function renderCheckReport(input: {
 
   const passed = journeys.filter((j) => j.status === 'passed').length
   const failed = journeys.filter((j) => j.status === 'failed').length
+  const skipped = journeys.filter((j) => j.status === 'skipped').length
   const bugs = findings.filter((f) => f.classification === 'confirmed_bug')
   const others = findings.filter((f) => f.classification !== 'confirmed_bug')
 
   const lines: string[] = []
   lines.push(
-    `**${passed} of ${journeys.length} journeys passed**${failed > 0 ? ` · ${failed} failed` : ''}`,
+    `**${passed} of ${journeys.length} journeys passed**${failed > 0 ? ` · ${failed} failed` : ''}${skipped > 0 ? ` · ${skipped} could not be attempted` : ''}`,
   )
   lines.push('')
 
@@ -105,6 +106,22 @@ export function renderCheckReport(input: {
 
   if (others.length > 0) {
     return { conclusion: 'neutral', title: 'No confirmed defects', summary }
+  }
+
+  /*
+   * A run that exercised nothing is not a pass. Reporting one as success is
+   * how a green check comes to mean "Forge could not find anything to do",
+   * which is the opposite of what a reviewer will read it as.
+   */
+  if (passed === 0) {
+    return {
+      conclusion: 'neutral',
+      title:
+        journeys.length === 0
+          ? 'Nothing was discovered to verify'
+          : 'No journey could be attempted',
+      summary,
+    }
   }
 
   return {

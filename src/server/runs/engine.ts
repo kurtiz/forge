@@ -20,10 +20,12 @@ import { Budget, BudgetExceededError } from '../domain/budget'
 import {
   classifyFailure,
   shouldReproduce,
+  summariseRun,
   type FailureSignal,
 } from '../domain/analysis'
 import { assertTransition } from '../domain/run-state'
 import { createExecutor, type BrowserExecutor } from '../execution'
+import type { ActionResult, PageObservation } from '../execution/types'
 import {
   createInvestigator,
   type SourceInsight,
@@ -279,6 +281,19 @@ export async function executeRun(
      * run, in the Solari browser and in the fetch executor's cookie jar alike.
      */
     let authenticated = false
+    /**
+     * Where the application put the browser after signing in.
+     *
+     * Kept because most applications answer a sign-in by redirecting into the
+     * part of themselves that only exists once you are in. Navigating back to
+     * the base URL after that throws the authenticated surface away and
+     * explores the signed-out marketing page instead, which is how a run
+     * against a real application ends up discovering one journey on an empty
+     * page.
+     */
+    let landing: PageObservation | null = null
+    /** Set when a configured sign-in did not work, for the report. */
+    let authFailure: string | null = null
     const stored = await repo.readProjectCredentials(input.projectId)
 
     if (stored && !canceled()) {
@@ -300,13 +315,16 @@ export async function executeRun(
           budget,
         )
         authenticated = result.ok
+        landing = result.landing
+        if (!result.ok) authFailure = result.detail
         await emit(
           result.ok ? 'auth.succeeded' : 'auth.failed',
           result.detail,
         )
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        await emit('auth.failed', `Sign-in could not run: ${message}`)
+        authFailure = `Sign-in could not run: ${message}`
+        await emit('auth.failed', authFailure)
       }
     }
 
@@ -314,12 +332,26 @@ export async function executeRun(
 
     await setStatus('discovering', 'Exploring the application')
 
-    budget.spend('browserActions')
-    const entry = await executor.navigate(input.targetUrl)
-    await emit('browser.action', entry.detail, {
-      url: entry.observation.url,
-      status: entry.observation.status,
-    })
+    /*
+     * Explore from wherever the sign-in landed, not from the base URL. A second
+     * navigation here would undo the redirect the application just performed
+     * and cost a browser action to do it.
+     */
+    let entry: ActionResult
+    if (landing) {
+      entry = { ok: true, detail: `Signed in at ${landing.url}`, observation: landing }
+      await emit('browser.action', `Exploring from ${landing.url} after sign-in`, {
+        url: landing.url,
+        status: landing.status,
+      })
+    } else {
+      budget.spend('browserActions')
+      entry = await executor.navigate(input.targetUrl)
+      await emit('browser.action', entry.detail, {
+        url: entry.observation.url,
+        status: entry.observation.status,
+      })
+    }
 
     await saveEvidence({
       runId: input.runId,
@@ -388,6 +420,8 @@ export async function executeRun(
       journey: (typeof journeys)[number]
       result: JourneyRun
     }> = []
+    /** Journeys nothing could be done with. Not failures, and not passes. */
+    let skipped = 0
 
     for (const journey of journeys) {
       if (canceled()) break
@@ -479,20 +513,26 @@ export async function executeRun(
         executor,
         input.runId,
         journey.record.id,
-        result.passed
-          ? `${journey.record.name}: final state`
-          : `${journey.record.name}: failure`,
+        result.outcome === 'failed'
+          ? `${journey.record.name}: failure`
+          : `${journey.record.name}: final state`,
       )
 
-      await repo.updateJourneyStatus(
-        journey.record.id,
-        result.passed ? 'passed' : 'failed',
-      )
+      await repo.updateJourneyStatus(journey.record.id, result.outcome)
 
-      if (result.passed) {
+      if (result.outcome === 'passed') {
         await emit('journey.passed', `Passed: ${journey.record.name}`, {
           journeyId: journey.record.id,
         })
+      } else if (result.outcome === 'skipped') {
+        // Nothing on the page matched the journey, so nothing was verified.
+        // Recorded as its own outcome rather than folded into either column.
+        skipped++
+        await emit(
+          'journey.skipped',
+          `Could not attempt: ${journey.record.name}`,
+          { journeyId: journey.record.id },
+        )
       } else {
         failures.push({ journey, result })
         await emit('journey.failed', `Failed: ${journey.record.name}`, {
@@ -533,11 +573,14 @@ export async function executeRun(
               failure.journey.discovered,
               budget,
             )
-            if (!attempt.passed) reproduced++
+            // Only a repeat failure counts. A journey that could not be
+            // attempted this time proves nothing either way.
+            const failedAgain = attempt.outcome === 'failed'
+            if (failedAgain) reproduced++
             await emit(
               'reproduction.attempt',
-              `Attempt ${attempts}: ${attempt.passed ? 'passed' : 'failed'}`,
-              { journeyId: failure.journey.record.id, failed: !attempt.passed },
+              `Attempt ${attempts}: ${attempt.outcome}`,
+              { journeyId: failure.journey.record.id, failed: failedAgain },
             )
           }
         } else {
@@ -605,6 +648,37 @@ export async function executeRun(
       }
     }
 
+    /*
+     * A configured sign-in that did not work is itself a result, and the most
+     * important one on the page: every journey after it ran as a stranger. It
+     * is recorded as a finding so the run cannot end on "no failures detected"
+     * for an application Forge never got inside. Classified as `environment`
+     * rather than a defect, because a wrong test account is a configuration
+     * problem and must not fail a pull request check.
+     */
+    if (authFailure && !canceled()) {
+      const finding = await repo.insertFinding({
+        runId: input.runId,
+        journeyId: null,
+        title: 'Forge could not sign in',
+        description: `${authFailure} Every journey in this run was executed signed out, so nothing behind the login was verified.`,
+        failureClass: 'AUTH_FAILURE',
+        classification: 'environment',
+        severity: 'high',
+        confidence: 0.9,
+        reproductionAttempts: 1,
+        reproductionFailures: 1,
+        rootCause: null,
+        rootCauseConfidence: null,
+        affectedFiles: [],
+      })
+      findingIds.push(finding.id)
+      await emit('finding.created', `Could not sign in: ${authFailure}`, {
+        findingId: finding.id,
+        classification: 'environment',
+      })
+    }
+
     /* ------------------------------------------------------------- report */
 
     await setStatus('reporting', 'Writing the report')
@@ -622,14 +696,24 @@ export async function executeRun(
       }
     }
 
-    const passed = journeys.length - failures.length
-    const summary =
-      failures.length === 0
-        ? `${passed} of ${journeys.length} journeys passed. No failures detected.`
-        : `${passed} of ${journeys.length} journeys passed. ${findingIds.length} finding${findingIds.length === 1 ? '' : 's'} recorded.`
+    const passed = journeys.length - failures.length - skipped
+    const summary = summariseRun({
+      total: journeys.length,
+      passed,
+      failed: failures.length,
+      skipped,
+      findings: findingIds.length,
+      authFailed: Boolean(authFailure),
+    })
 
     if (input.verifiesFindingId) {
-      const verified = failures.length === 0
+      /*
+       * A fix is verified only when the journeys actually ran and passed.
+       * Without the last two conditions, a run that could not sign in, or one
+       * where every journey was skipped, would silently resolve the finding it
+       * was supposed to re-test.
+       */
+      const verified = failures.length === 0 && !authFailure && passed > 0
       await repo.updateFixAttempt(
         input.runId,
         verified ? 'verified' : 'still_failing',
@@ -642,7 +726,9 @@ export async function executeRun(
         verified ? 'fix.verified' : 'fix.still_failing',
         verified
           ? 'Fix verified: the original failure no longer reproduces.'
-          : 'The original failure still reproduces.',
+          : failures.length > 0
+            ? 'The original failure still reproduces.'
+            : 'The fix could not be confirmed: this run did not manage to exercise the journey.',
         { findingId: input.verifiesFindingId },
       )
     }

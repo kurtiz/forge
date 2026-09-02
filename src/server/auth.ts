@@ -1,10 +1,10 @@
 /**
  * Better Auth configuration.
  *
- * Email + password for real accounts, plus the anonymous plugin so anyone can
- * try a verification run without creating credentials first. Anonymous users
- * are real rows with real ownership, so every authorization check downstream
- * works identically for them.
+ * Email + password for real accounts, GitHub for people who would rather not
+ * invent another password, and the anonymous plugin so anyone can try a
+ * verification run without credentials at all. All three produce the same user
+ * row, so every authorization check downstream works identically.
  */
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -14,6 +14,17 @@ import { env } from 'cloudflare:workers'
 import { db, schema, tables } from './db'
 import { resolveToken } from './tokens/repository'
 import { bearerToken, isTokenShaped } from './tokens/token'
+
+/**
+ * Whether GitHub sign-in can work on this deployment.
+ *
+ * Both halves of the OAuth credential are required, and the console asks
+ * before it offers the button: an OAuth flow that dead-ends on a provider
+ * error page is worse than not offering it.
+ */
+export function githubLoginAvailable(): boolean {
+  return Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET)
+}
 
 function createAuth() {
   const secret = env.BETTER_AUTH_SECRET
@@ -34,6 +45,29 @@ function createAuth() {
     // so the auth tables are described in exactly one place.
     database: drizzleAdapter(db(), { provider: 'sqlite', schema }),
     telemetry: { enabled: false },
+
+    socialProviders: githubLoginAvailable()
+      ? {
+          github: {
+            clientId: env.GITHUB_CLIENT_ID as string,
+            clientSecret: env.GITHUB_CLIENT_SECRET as string,
+          },
+        }
+      : undefined,
+
+    /**
+     * A GitHub account and an email account with the same address are the same
+     * person, so the second one links to the first instead of creating a
+     * parallel user with a duplicate email. Limited to GitHub, which verifies
+     * addresses: trusting an unverified provider here would let someone claim
+     * an existing account by signing up elsewhere with its address.
+     */
+    account: {
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ['github'],
+      },
+    },
 
     emailAndPassword: {
       enabled: true,

@@ -189,3 +189,53 @@ export function rankJourneys(
     .sort((a, b) => b.priority - a.priority)
     .slice(0, limit)
 }
+
+/**
+ * The one sentence everyone reads.
+ *
+ * It has to distinguish three things a boolean cannot: journeys that passed,
+ * journeys that failed, and journeys nothing could be done with. "No failures
+ * detected" is reserved for a run that actually exercised something and found
+ * it working - anything else says what was and was not verified.
+ */
+export function summariseRun(input: {
+  total: number
+  passed: number
+  failed: number
+  skipped: number
+  findings: number
+  authFailed: boolean
+}): string {
+  const parts: string[] = []
+
+  if (input.total === 0) {
+    parts.push('No journeys were discovered on the entry page.')
+  } else {
+    parts.push(`${input.passed} of ${input.total} journeys passed.`)
+  }
+
+  if (input.skipped > 0) {
+    parts.push(
+      `${input.skipped} could not be attempted: nothing on the page matched them.`,
+    )
+  }
+
+  if (input.authFailed) {
+    parts.push('Forge could not sign in, so nothing behind the login was verified.')
+  }
+
+  if (input.findings > 0) {
+    parts.push(
+      `${input.findings} finding${input.findings === 1 ? '' : 's'} recorded.`,
+    )
+  } else if (
+    input.failed === 0 &&
+    input.skipped === 0 &&
+    !input.authFailed &&
+    input.passed > 0
+  ) {
+    parts.push('No failures detected.')
+  }
+
+  return parts.join(' ')
+}

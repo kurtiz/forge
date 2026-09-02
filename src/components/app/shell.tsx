@@ -5,11 +5,12 @@
  * dense, so the shell stays out of the way: no sidebar, no breadcrumb trail
  * deeper than the object being viewed.
  */
-import { Link } from '@tanstack/react-router'
-import { Button } from '@cloudflare/kumo/components/button'
-import { ThemeToggle } from '#/components/theme'
-import type { SessionUser } from '#/server/auth'
+import { Link } from "@tanstack/react-router";
+import { Button } from "@cloudflare/kumo/components/button";
+import { ThemeToggle } from "#/components/theme";
+import type { SessionUser } from "#/server/auth";
 import type { ReactNode } from "react";
+import { authClient } from "#/lib/auth-client.ts";
 
 export function ForgeMark({ size = 18 }: { size?: number }) {
   return (
@@ -27,7 +28,7 @@ export function ForgeMark({ size = 18 }: { size?: number }) {
         strokeWidth="2.4"
         strokeLinecap="square"
       />
-      <path d="M4 12h9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="square" />
+      <path d="M4 12h9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="square"/>
       <path
         d="m15.5 15.5 2.8 2.8 5-5"
         stroke="var(--forge-accent)"
@@ -36,24 +37,25 @@ export function ForgeMark({ size = 18 }: { size?: number }) {
         strokeLinejoin="round"
       />
     </svg>
-  )
+  );
 }
 
 export function TopBar({
-  user,
-  right,
-}: {
+                         user,
+                         right,
+                       }: {
   user: SessionUser | null
   right?: ReactNode
 }) {
   return (
-    <header className="sticky top-0 z-40 h-14 border-b border-kumo-hairline bg-kumo-base/85 backdrop-blur">
+    <header
+      className="sticky top-0 z-40 h-14 border-b border-kumo-hairline bg-kumo-base/85 backdrop-blur">
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-4 px-5">
         <Link
-          to={user ? '/dashboard' : '/'}
+          to={user ? "/dashboard" : "/"}
           className="flex items-center gap-2 text-kumo-strong no-underline"
         >
-          <ForgeMark />
+          <ForgeMark/>
           <span className="text-[15px] font-semibold tracking-tight">Forge</span>
         </Link>
 
@@ -67,15 +69,18 @@ export function TopBar({
               Settings
             </Link>
           ) : null}
-          <ThemeToggle />
-          {user ? <AccountChip user={user} /> : null}
+          <ThemeToggle/>
+          {user ? <AccountChip user={user}/> : null}
         </div>
       </div>
     </header>
-  )
+  );
 }
 
 function AccountChip({ user }: { user: SessionUser }) {
+
+  const signOut = authClient.signOut;
+
   return (
     <div className="flex items-center gap-2">
       {user.isAnonymous ? (
@@ -89,38 +94,39 @@ function AccountChip({ user }: { user: SessionUser }) {
           {user.email}
         </span>
       )}
-      <form method="post" action="/api/auth/sign-out">
-        <Button variant="ghost" size="sm" type="submit" className="hit-44">
-          Sign out
-        </Button>
-      </form>
+      <Button
+        variant="destructive"
+        size="sm" type="button" className="hit-44"
+        onClick={() => signOut()}>
+        Sign out
+      </Button>
     </div>
-  )
+  );
 }
 
 export function Page({
-  children,
-  wide,
-}: {
+                       children,
+                       wide,
+                     }: {
   children: ReactNode
   wide?: boolean
 }) {
   return (
     <main
-      className={`mx-auto w-full px-5 pb-24 pt-8 ${wide ? 'max-w-[1180px]' : 'max-w-[880px]'}`}
+      className={`mx-auto w-full px-5 pb-24 pt-8 ${wide ? "max-w-[1180px]" : "max-w-[880px]"}`}
     >
       {children}
     </main>
-  )
+  );
 }
 
 /** Page header: title, optional description, optional actions on the right. */
 export function PageHeader({
-  title,
-  description,
-  actions,
-  above,
-}: {
+                             title,
+                             description,
+                             actions,
+                             above,
+                           }: {
   title: ReactNode
   description?: ReactNode
   actions?: ReactNode
@@ -145,22 +151,23 @@ export function PageHeader({
         ) : null}
       </div>
     </div>
-  )
+  );
 }
 
 /** A labelled section separated by a hairline rather than wrapped in a card. */
 export function Section({
-  title,
-  meta,
-  children,
-}: {
+                          title,
+                          meta,
+                          children,
+                        }: {
   title: string
   meta?: ReactNode
   children: ReactNode
 }) {
   return (
     <section className="mt-10">
-      <div className="mb-3 flex items-baseline justify-between gap-3 border-b border-kumo-hairline pb-2">
+      <div
+        className="mb-3 flex items-baseline justify-between gap-3 border-b border-kumo-hairline pb-2">
         <h2 className="m-0 text-sm font-semibold text-kumo-strong">{title}</h2>
         {meta ? (
           <div className="tabular text-xs text-kumo-subtle">{meta}</div>
@@ -168,15 +175,15 @@ export function Section({
       </div>
       {children}
     </section>
-  )
+  );
 }
 
 /** A single measured number. Deliberately not a card. */
 export function Stat({
-  label,
-  value,
-  hint,
-}: {
+                       label,
+                       value,
+                       hint,
+                     }: {
   label: string
   value: ReactNode
   hint?: string
@@ -189,5 +196,5 @@ export function Stat({
       </div>
       {hint ? <div className="mt-0.5 text-xs text-kumo-subtle">{hint}</div> : null}
     </div>
-  )
+  );
 }

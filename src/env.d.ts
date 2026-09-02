@@ -37,6 +37,14 @@ interface ForgeOptionalEnv {
   GITHUB_WEBHOOK_SECRET?: string
   /** The app's URL slug, used to build the install link. */
   GITHUB_APP_SLUG?: string
+
+  /**
+   * GitHub OAuth credentials for signing in to Forge. Separate from the App
+   * credentials above: that app verifies pull requests, these identify a
+   * person. Both are required together or GitHub sign-in is not offered.
+   */
+  GITHUB_CLIENT_ID?: string
+  GITHUB_CLIENT_SECRET?: string
 }
 
 interface Env extends ForgeOptionalEnv {}

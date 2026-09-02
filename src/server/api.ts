@@ -24,7 +24,12 @@ import {
   type RunEvent,
   type Schedule,
 } from './contracts'
-import { currentUser, requireUser, type SessionUser } from './auth'
+import {
+  currentUser,
+  githubLoginAvailable,
+  requireUser,
+  type SessionUser,
+} from './auth'
 import { plannedExecutorKind } from './execution'
 import {
   assertSafeTargetUrl,
@@ -53,12 +58,15 @@ export type SessionPayload = {
   user: SessionUser | null
   /** Which executor a run started right now would use. */
   executor: 'solari' | 'fetch'
+  /** Sign-in methods this deployment can actually complete. */
+  providers: { github: boolean }
 }
 
 export const getSession = createServerFn({ method: 'GET' }).handler(
   async (): Promise<SessionPayload> => ({
     user: await currentUser(getRequest()),
     executor: plannedExecutorKind(),
+    providers: { github: githubLoginAvailable() },
   }),
 )
 

@@ -32,8 +32,18 @@ export type OperatorStep = {
   status: 'passed' | 'failed' | 'skipped'
 }
 
+/**
+ * What a journey did.
+ *
+ * `skipped` exists because "we could not attempt this" is not "this works".
+ * Collapsing the two into a boolean is how a run in which nothing was actually
+ * exercised ends up reporting "no failures detected", which is the most
+ * expensive kind of wrong answer this product can give.
+ */
+export type JourneyOutcome = 'passed' | 'failed' | 'skipped'
+
 export type JourneyRun = {
-  passed: boolean
+  outcome: JourneyOutcome
   steps: OperatorStep[]
   trace: string[]
   signal: FailureSignal
@@ -150,7 +160,7 @@ export async function runJourney(
   budget.spend('browserActions')
   const opened = await executor.navigate(entryUrl)
   if (!record('Navigate', journey.entryPath, 'Page loads without an error status', opened)) {
-    return { passed: false, steps, trace, signal, finalObservation }
+    return { outcome: 'failed', steps, trace, signal, finalObservation }
   }
 
   // Fill every visible field before activating anything: a form submitted with
@@ -188,6 +198,10 @@ export async function runJourney(
     // discovery miss rather than an application defect, so the journey is
     // skipped - unless the reason nothing matched is that a sign-in form is
     // standing in front of it, which is a real result, not a miss.
+    //
+    // Skipped is not passed. Nothing was exercised here, and reporting it as a
+    // pass is how a run against a page with no affordances announces that the
+    // application works.
     const blocked = signal.authWall === true
     steps.push({
       sequence: ++sequence,
@@ -200,7 +214,13 @@ export async function runJourney(
       status: blocked ? 'failed' : 'skipped',
     })
     trace.push(`Locate control "${journey.name}" -> ${blocked ? 'blocked by sign-in' : 'not found'}`)
-    return { passed: !blocked, steps, trace, signal, finalObservation }
+    return {
+      outcome: blocked ? 'failed' : 'skipped',
+      steps,
+      trace,
+      signal,
+      finalObservation,
+    }
   }
 
   budget.spend('browserActions')
@@ -216,7 +236,7 @@ export async function runJourney(
     activated,
   )
 
-  if (!ok) return { passed: false, steps, trace, signal, finalObservation }
+  if (!ok) return { outcome: 'failed', steps, trace, signal, finalObservation }
 
   budget.spend('browserActions')
   const after = await executor.readPage()
@@ -261,5 +281,11 @@ export async function runJourney(
     }
   }
 
-  return { passed: !failed, steps, trace, signal, finalObservation }
+  return {
+    outcome: failed ? 'failed' : 'passed',
+    steps,
+    trace,
+    signal,
+    finalObservation,
+  }
 }

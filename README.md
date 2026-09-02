@@ -245,6 +245,10 @@ wrangler secret put GITHUB_APP_ID
 wrangler secret put GITHUB_APP_PRIVATE_KEY
 wrangler secret put GITHUB_WEBHOOK_SECRET
 
+# Optional; both together enable "Continue with GitHub" on the sign-in page
+wrangler secret put GITHUB_CLIENT_ID
+wrangler secret put GITHUB_CLIENT_SECRET
+
 pnpm db:migrate:remote
 pnpm deploy
 ```
@@ -365,6 +369,13 @@ retried request cannot create a second paid session.
 **Anonymous accounts are real accounts.** The anonymous plugin creates an owned
 user row, so every authorization check behaves identically for guests. Signing
 up later migrates their projects across rather than stranding them.
+
+**Three ways to sign in, one user.** Email and password, GitHub, and guest all
+produce the same user row. GitHub is offered only when both halves of its OAuth
+credential are configured, because a button that dead-ends on a provider error
+page is worse than no button. Account linking is enabled for GitHub alone: it
+verifies email addresses, and trusting a provider that does not would let
+someone claim an existing account by signing up elsewhere with its address.
 
 **Test with synthetic data.** The Operator fills forms with obviously synthetic
 values and never real credentials. Point Forge at previews and staging, not at

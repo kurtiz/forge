@@ -31,6 +31,15 @@ export type SignInResult = {
   ok: boolean
   /** Safe to log: never contains the password. */
   detail: string
+  /**
+   * Where the application put the browser after a successful sign-in.
+   *
+   * Returned so the engine can explore from there. Most applications answer a
+   * sign-in by redirecting into the part of themselves that only exists once
+   * you are in, and that page - not the marketing page at the base URL - is
+   * what a signed-in user actually meets.
+   */
+  landing: PageObservation | null
 }
 
 export type LoginFields = {
@@ -135,7 +144,11 @@ export async function signIn(
   budget.spend('browserActions')
   const landing = await executor.navigate(loginUrl)
   if (!landing.ok) {
-    return { ok: false, detail: `Could not open ${credentials.loginPath}: ${landing.detail}` }
+    return {
+      ok: false,
+      detail: `Could not open ${credentials.loginPath}: ${landing.detail}`,
+      landing: null,
+    }
   }
 
   const fields = selectLoginFields(landing.observation.elements)
@@ -144,22 +157,35 @@ export async function signIn(
     return {
       ok: false,
       detail: `No password field at ${credentials.loginPath}. Forge signs in with a username and password only; single-sign-on and magic links are not supported.`,
+      landing: null,
     }
   }
   if (!fields.username) {
-    return { ok: false, detail: `No username field at ${credentials.loginPath}.` }
+    return {
+      ok: false,
+      detail: `No username field at ${credentials.loginPath}.`,
+      landing: null,
+    }
   }
 
   budget.spend('browserActions')
   const typedUsername = await executor.fill(fields.username.ref, credentials.username)
   if (!typedUsername.ok) {
-    return { ok: false, detail: 'The username field would not accept input.' }
+    return {
+      ok: false,
+      detail: 'The username field would not accept input.',
+      landing: null,
+    }
   }
 
   budget.spend('browserActions')
   const typedPassword = await executor.fill(fields.password.ref, credentials.password)
   if (!typedPassword.ok) {
-    return { ok: false, detail: 'The password field would not accept input.' }
+    return {
+      ok: false,
+      detail: 'The password field would not accept input.',
+      landing: null,
+    }
   }
 
   // Submit through the password field when there is no button: a bare
@@ -176,12 +202,21 @@ export async function signIn(
     return {
       ok: false,
       detail: `Still on a login form after signing in as ${credentials.username}. The test account may be wrong, or the application may require a second factor.`,
+      landing: null,
     }
   }
 
   if (after.status >= 400) {
-    return { ok: false, detail: `Sign-in returned HTTP ${after.status}.` }
+    return {
+      ok: false,
+      detail: `Sign-in returned HTTP ${after.status}.`,
+      landing: null,
+    }
   }
 
-  return { ok: true, detail: `Signed in as ${credentials.username}.` }
+  return {
+    ok: true,
+    detail: `Signed in as ${credentials.username}.`,
+    landing: after,
+  }
 }
