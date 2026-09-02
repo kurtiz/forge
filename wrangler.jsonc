@@ -24,16 +24,33 @@
 		"crons": ["*/15 * * * *"]
 	},
 
+	/**
+	 * Deployed values. Local development does not read these: `.dev.vars`
+	 * overrides both, and says `development` there, which is what turns the
+	 * loopback allowance and guest sign-in on for the demo app.
+	 *
+	 * `production` here is load-bearing rather than cosmetic. It is what the
+	 * target-URL guard checks before refusing loopback and private addresses,
+	 * what withholds anonymous accounts, and what marks the session cookie
+	 * `Secure`.
+	 *
+	 * APP_URL is the public origin: Better Auth builds its OAuth callbacks from
+	 * it and the API puts it in the run links it hands back to the CLI. Empty
+	 * means "infer it from the request", which works - Better Auth warns - but
+	 * leaves CLI run links pointing at localhost. Set it to the real origin
+	 * after the first deploy names one, and deploy again.
+	 */
 	"vars": {
-		"FORGE_ENV": "development",
-		"APP_URL": "http://localhost:3000"
+		"FORGE_ENV": "production",
+		"APP_URL": ""
 	},
 
+	/** Created with `wrangler d1 create forge`; migrations in the directory named. */
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "forge",
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "27a90f6d-395d-4922-97af-a664bf9af071",
 			"migrations_dir": "infrastructure/migrations"
 		}
 	],
