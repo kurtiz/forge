@@ -2,9 +2,10 @@
  * Better Auth configuration.
  *
  * Email + password for real accounts, GitHub for people who would rather not
- * invent another password, and the anonymous plugin so anyone can try a
- * verification run without credentials at all. All three produce the same user
- * row, so every authorization check downstream works identically.
+ * invent another password, and - in development only - the anonymous plugin so
+ * a guest can try a verification run without credentials at all. All three
+ * produce the same user row, so every authorization check downstream works
+ * identically.
  */
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -24,6 +25,21 @@ import { bearerToken, isTokenShaped } from './tokens/token'
  */
 export function githubLoginAvailable(): boolean {
   return Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET)
+}
+
+/**
+ * Whether guest sign-in exists on this deployment.
+ *
+ * Development only. A guest account can start real, billable verification runs,
+ * so leaving the anonymous endpoint open on a public deployment is an
+ * unauthenticated way to spend money on browser sessions and model calls. It is
+ * the right thing for local evaluation and the wrong thing on the internet.
+ *
+ * This gates the plugin itself, not just the button. Hiding a control while its
+ * endpoint stays live is not a restriction, it is a hidden one.
+ */
+export function guestAccessAvailable(): boolean {
+  return env.FORGE_ENV === 'development'
 }
 
 function createAuth() {
@@ -90,21 +106,29 @@ function createAuth() {
       },
     },
 
-    plugins: [
-      anonymous({
-        emailDomainName: 'anonymous.forge.dev',
-        /**
-         * When a trial user signs up properly, carry their work across instead
-         * of stranding it on a row that is about to be deleted.
-         */
-        onLinkAccount: async ({ anonymousUser, newUser }) => {
-          await db()
-            .update(tables.projects)
-            .set({ userId: newUser.user.id })
-            .where(eq(tables.projects.userId, anonymousUser.user.id))
-        },
-      }),
-    ],
+    /*
+     * The anonymous plugin is registered only where guests are allowed. A
+     * deployment that already carries guest users would lose the upgrade path
+     * along with the plugin, so switch this on for such an environment before
+     * relying on it.
+     */
+    plugins: guestAccessAvailable()
+      ? [
+          anonymous({
+            emailDomainName: 'anonymous.forge.dev',
+            /**
+             * When a trial user signs up properly, carry their work across
+             * instead of stranding it on a row that is about to be deleted.
+             */
+            onLinkAccount: async ({ anonymousUser, newUser }) => {
+              await db()
+                .update(tables.projects)
+                .set({ userId: newUser.user.id })
+                .where(eq(tables.projects.userId, anonymousUser.user.id))
+            },
+          }),
+        ]
+      : [],
   })
 }
 

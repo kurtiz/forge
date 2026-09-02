@@ -28,6 +28,7 @@ import {
 import {
   currentUser,
   githubLoginAvailable,
+  guestAccessAvailable,
   requireUser,
   type SessionUser,
 } from './auth'
@@ -59,8 +60,11 @@ export type SessionPayload = {
   user: SessionUser | null
   /** Which executor a run started right now would use. */
   executor: 'solari' | 'fetch'
-  /** Sign-in methods this deployment can actually complete. */
-  providers: { github: boolean }
+  /**
+   * Sign-in methods this deployment can actually complete. Both are decided by
+   * the server: the page renders what is offered rather than deciding policy.
+   */
+  providers: { github: boolean; guest: boolean }
   /**
    * Whether this is a development deployment. Used only to explain a feature
    * that is switched off for want of configuration, which is a thing worth
@@ -73,7 +77,10 @@ export const getSession = createServerFn({ method: 'GET' }).handler(
   async (): Promise<SessionPayload> => ({
     user: await currentUser(getRequest()),
     executor: plannedExecutorKind(),
-    providers: { github: githubLoginAvailable() },
+    providers: {
+      github: githubLoginAvailable(),
+      guest: guestAccessAvailable(),
+    },
     development: env.FORGE_ENV === 'development',
   }),
 )

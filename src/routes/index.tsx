@@ -296,8 +296,8 @@ function Close() {
           Verify your first app in a minute
         </h2>
         <p className="mx-auto mt-3 max-w-[48ch] text-[15px] text-kumo-subtle">
-          Sign in as a guest, point Forge at the bundled demo application, and
-          watch it find the seeded defects live.
+          Point Forge at the bundled demo application and watch it find the
+          seeded defects live.
         </p>
         <div className="mt-8">
           <Link to="/sign-in" className="no-underline">

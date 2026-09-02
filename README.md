@@ -154,7 +154,9 @@ pnpm db:migrate                    # applies migrations to the local D1
 pnpm dev
 ```
 
-Open http://localhost:3000 and press **Continue as guest**.
+Open http://localhost:3000 and press **Continue as guest**. Guest access exists
+only when `FORGE_ENV=development`: a guest can start real, billable browser
+sessions, so the anonymous endpoint is not registered anywhere else.
 
 No Cloudflare login, no Solari key, and no model provider are required to run
 the whole loop locally. Forge degrades honestly: the HTTP executor replaces the
@@ -366,9 +368,14 @@ a `finally`, including on cancellation, because a leaked browser session bills
 for as long as it lives. Expensive operations accept an idempotency key so a
 retried request cannot create a second paid session.
 
-**Anonymous accounts are real accounts.** The anonymous plugin creates an owned
-user row, so every authorization check behaves identically for guests. Signing
-up later migrates their projects across rather than stranding them.
+**Anonymous accounts are real accounts, in development only.** The anonymous
+plugin creates an owned user row, so every authorization check behaves
+identically for guests, and signing up later migrates their projects across
+rather than stranding them. It is registered only when
+`FORGE_ENV=development`, because a guest account can start real billable runs
+and an open anonymous endpoint on a public deployment is an unauthenticated way
+to spend money. The plugin is gated, not just the button: hiding a control
+whose endpoint is still live is not a restriction.
 
 **Three ways to sign in, one user.** GitHub sign-in needs an OAuth app whose
 callback URL is `<APP_URL>/api/auth/callback/github`, and its client id and

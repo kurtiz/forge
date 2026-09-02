@@ -1,11 +1,15 @@
 /**
  * Sign in.
  *
- * Guest access is the primary path and sits above the fold: the fastest way to
- * evaluate Forge is to run it, not to fill in a form. An anonymous account is a
- * real account with real ownership, so everything downstream behaves
- * identically; the only difference is that it has no credentials to come back
- * with, which the page says plainly.
+ * Three doors, and which ones exist is the server's decision, not this page's.
+ *
+ * Guest access is development-only: it is the fastest way to evaluate Forge
+ * locally, and an unauthenticated way to start billable browser sessions
+ * anywhere else. Where it is offered it is the primary path and sits above the
+ * fold, because the fastest way to evaluate Forge is to run it rather than to
+ * fill in a form. An anonymous account is a real account with real ownership,
+ * so everything downstream behaves identically; the only difference is that it
+ * has no credentials to come back with, which the page says plainly.
  */
 import { useState } from 'react'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
@@ -51,6 +55,14 @@ function SignIn() {
   const [busy, setBusy] = useState<'guest' | 'github' | 'credentials' | null>(
     null,
   )
+
+  /**
+   * Whether anything sits above the email form. The divider that introduces it
+   * only makes sense when there is something on the other side of it, and on a
+   * production deployment with no GitHub credentials there is not.
+   */
+  const showGitHub = session.providers.github || session.development
+  const showDivider = showGitHub || session.providers.guest
 
   async function afterAuth() {
     // The root route resolves the session in beforeLoad, so it has to re-run
@@ -133,10 +145,12 @@ function SignIn() {
           <p className="mb-8 mt-2 text-sm text-kumo-subtle">
             {upgrade
               ? 'Add an email and password to this session. Your projects and runs carry over.'
-              : 'Start as a guest, or sign in to come back to your runs later.'}
+              : session.providers.guest
+                ? 'Start as a guest, or sign in to come back to your runs later.'
+                : 'Sign in to come back to your runs later.'}
           </p>
 
-          {!upgrade ? (
+          {!upgrade && session.providers.guest ? (
             <>
               <Button
                 variant="primary"
@@ -152,8 +166,13 @@ function SignIn() {
               <p className="mb-8 mt-2.5 text-xs text-kumo-subtle">
                 A real account with no password. It works everywhere in Forge, but
                 you cannot sign back into it once this browser forgets the session.
+                Guest access is available in development only.
               </p>
+            </>
+          ) : null}
 
+          {!upgrade ? (
+            <>
               <GitHubButton
                 available={session.providers.github}
                 development={session.development}
@@ -161,11 +180,15 @@ function SignIn() {
                 onClick={continueWithGitHub}
               />
 
-              <div className="mb-6 flex items-center gap-3">
-                <span className="h-px flex-1 bg-kumo-hairline" />
-                <span className="text-xs text-kumo-subtle">or use an email</span>
-                <span className="h-px flex-1 bg-kumo-hairline" />
-              </div>
+              {showDivider ? (
+                <div className="mb-6 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-kumo-hairline" />
+                  <span className="text-xs text-kumo-subtle">
+                    or use an email
+                  </span>
+                  <span className="h-px flex-1 bg-kumo-hairline" />
+                </div>
+              ) : null}
             </>
           ) : null}
 
@@ -237,7 +260,7 @@ function SignIn() {
 
             <Button
               type="submit"
-              variant={upgrade ? 'primary' : 'secondary'}
+              variant={upgrade || !session.providers.guest ? 'primary' : 'secondary'}
               size="lg"
               className="w-full"
               loading={busy === 'credentials'}
