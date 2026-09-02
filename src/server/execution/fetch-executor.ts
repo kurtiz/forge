@@ -14,6 +14,7 @@ import {
   type ActionResult,
   type BrowserExecutor,
   type PageElement,
+  type PageKey,
   type PageObservation,
   type Screenshot,
 } from './types'
@@ -34,6 +35,13 @@ type ParsedPage = {
   text: string
   /** ref -> which form the element belongs to. */
   fieldOwner: Map<string, { formRef: string; fieldName: string }>
+  /**
+   * ref of a `select` -> its options, label and submitted value both.
+   *
+   * The agent chooses by the label it can see; the form must be posted the
+   * value the option carries, which is rarely the same string.
+   */
+  selectOptions: Map<string, Array<{ label: string; value: string }>>
 }
 
 const USER_AGENT =
@@ -101,6 +109,62 @@ export class FetchBrowserExecutor implements BrowserExecutor {
     return {
       ok: true,
       detail: `Typed into "${element.name}".`,
+      observation: await this.readPage(),
+    }
+  }
+
+  async selectOption(ref: string, value: string): Promise<ActionResult> {
+    const element = this.element(ref)
+    const options = this.parsed?.selectOptions.get(ref) ?? []
+    const wanted = value.trim().toLowerCase()
+    const match =
+      options.find((o) => o.label.toLowerCase() === wanted) ??
+      options.find((o) => o.value.toLowerCase() === wanted) ??
+      options.find((o) => o.label.toLowerCase().includes(wanted))
+
+    if (!match) {
+      return {
+        ok: false,
+        detail: `"${element.name}" offers no option matching "${value}".`,
+        observation: await this.readPage(),
+      }
+    }
+
+    this.drafts.set(ref, match.value || match.label)
+    element.value = match.label
+    return {
+      ok: true,
+      detail: `Chose "${match.label}" in "${element.name}".`,
+      observation: await this.readPage(),
+    }
+  }
+
+  async check(ref: string): Promise<ActionResult> {
+    const element = this.element(ref)
+    if (element.checked) {
+      return {
+        ok: true,
+        detail: `"${element.name}" was already on.`,
+        observation: await this.readPage(),
+      }
+    }
+    this.drafts.set(ref, element.value || 'on')
+    element.checked = true
+    return {
+      ok: true,
+      detail: `Turned on "${element.name}".`,
+      observation: await this.readPage(),
+    }
+  }
+
+  /**
+   * There is no renderer here, so there is nothing a key could reach. Said
+   * plainly rather than answered with a pretend success.
+   */
+  async pressKey(key: PageKey): Promise<ActionResult> {
+    return {
+      ok: false,
+      detail: `The fetch executor cannot send the ${key} key.`,
       observation: await this.readPage(),
     }
   }
@@ -270,6 +334,7 @@ function emptyParse(text: string): ParsedPage {
     forms: [],
     text: condenseText(text),
     fieldOwner: new Map(),
+    selectOptions: new Map(),
   }
 }
 
@@ -282,6 +347,10 @@ async function parseHtml(response: Response): Promise<ParsedPage> {
   const elements: PageElement[] = []
   const forms: ParsedForm[] = []
   const fieldOwner = new Map<string, { formRef: string; fieldName: string }>()
+  const selectOptions = new Map<
+    string,
+    Array<{ label: string; value: string }>
+  >()
   const textParts: string[] = []
 
   let title = ''
@@ -291,6 +360,10 @@ async function parseHtml(response: Response): Promise<ParsedPage> {
   let capturingLabel: string | null = null
   let inTitle = false
   let suppressText = 0
+  /** The select being parsed, so its options land on the right element. */
+  let currentSelect: string | null = null
+  /** The option being parsed, whose label arrives as a text node. */
+  let currentOption: { label: string; value: string } | null = null
 
   const nextRef = () => `e${++refCounter}`
   const currentForm = () => forms[forms.length - 1]
@@ -407,12 +480,15 @@ async function parseHtml(response: Response): Promise<ParsedPage> {
 
         const ref = nextRef()
         const fieldName = el.getAttribute('name') ?? ''
-        const role =
+        const ticks = type === 'checkbox' || type === 'radio'
+        const role: PageElement['role'] =
           el.tagName === 'select'
             ? 'select'
             : el.tagName === 'textarea'
               ? 'textarea'
-              : 'input'
+              : ticks
+                ? 'checkbox'
+                : 'input'
 
         elements.push({
           ref,
@@ -423,7 +499,30 @@ async function parseHtml(response: Response): Promise<ParsedPage> {
             el.getAttribute('aria-label') || fieldName || el.getAttribute('placeholder') || role,
           inputType: type || undefined,
           required: el.hasAttribute('required'),
+          // A checkbox is on or off; everything else holds a value. Both are
+          // reported so a form's unmet requirements can be named from the page
+          // rather than from what the agent remembers typing.
+          ...(ticks
+            ? { checked: el.hasAttribute('checked') }
+            : {
+                // A server that renders a value into a password field must not
+                // have it copied into an observation.
+                value:
+                  type === 'password'
+                    ? el.getAttribute('value')
+                      ? '\u2022\u2022\u2022'
+                      : ''
+                    : (el.getAttribute('value') ?? ''),
+              }),
         })
+
+        if (el.tagName === 'select') {
+          currentSelect = ref
+          selectOptions.set(ref, [])
+          el.onEndTag(() => {
+            currentSelect = null
+          })
+        }
 
         const form = currentForm()
         if (form && fieldName) {
@@ -434,6 +533,26 @@ async function parseHtml(response: Response): Promise<ParsedPage> {
           })
           fieldOwner.set(ref, { formRef: form.ref, fieldName })
         }
+      },
+    })
+    .on('option', {
+      element(el) {
+        if (!currentSelect) return
+        currentOption = { label: '', value: el.getAttribute('value') ?? '' }
+        const owner = currentSelect
+        const option = currentOption
+        el.onEndTag(() => {
+          const label = option.label.replace(/\s+/g, ' ').trim()
+          if (label || option.value) {
+            selectOptions
+              .get(owner)
+              ?.push({ label: label || option.value, value: option.value || label })
+          }
+          currentOption = null
+        })
+      },
+      text(chunk) {
+        if (currentOption) currentOption.label += chunk.text
       },
     })
     .on('body', {
@@ -449,6 +568,8 @@ async function parseHtml(response: Response): Promise<ParsedPage> {
 
   for (const element of elements) {
     element.name = element.name.replace(/\s+/g, ' ').trim() || element.role
+    const options = selectOptions.get(element.ref)
+    if (options?.length) element.options = options.map((o) => o.label)
   }
 
   return {
@@ -458,5 +579,6 @@ async function parseHtml(response: Response): Promise<ParsedPage> {
     forms,
     text: condenseText(textParts.join(' ')),
     fieldOwner,
+    selectOptions,
   }
 }

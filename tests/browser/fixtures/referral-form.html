@@ -1,0 +1,97 @@
+<!doctype html><meta charset="utf-8"><title>New referral</title>
+<!--
+  The referral form that produced the failure this suite exists for.
+
+  Every awkward thing here is one a real application did: a patient resolved by
+  a lookup rather than typed, a date behind a popover that opens on pointerdown
+  alone, a submit the application disables until both have happened, and a
+  checkbox that is a button with aria-checked rather than an input. None of it
+  is reachable by matching a journey's words against a label.
+-->
+<style>[hidden]{display:none}.grid button{width:2rem}</style>
+<h1>New referral</h1>
+<form id="f">
+  <label for="phone">Phone number</label>
+  <input id="phone" name="phone" type="tel">
+  <button type="button" id="find">Find</button>
+  <div id="patient" hidden><label for="pname">Patient</label><input id="pname" value="Nadia Okonjo" readonly></div>
+
+  <label for="test">Test requested</label>
+  <input id="test" name="test" required>
+
+  <label for="kind">Modality</label>
+  <select id="kind" name="kind">
+    <option value="">Select a test</option>
+    <option value="bt_04">Blood test</option>
+    <option value="xr_01">X-ray</option>
+  </select>
+
+  <label for="notes">Clinical notes</label>
+  <textarea id="notes" name="notes"></textarea>
+
+  <label for="native">Preferred date (native)</label>
+  <input id="native" name="native" type="date">
+
+  <!-- The popover trigger opens on pointerdown only, like a Radix select or
+       dropdown: el.click() alone never opened it. -->
+  <button type="button" id="datebtn" aria-label="Pick a date">Pick a date</button>
+  <div id="pop" hidden class="grid" role="dialog">
+    <button type="button">Previous month</button>
+    <button type="button">Next month</button>
+    <div id="days"></div>
+  </div>
+
+  <button type="button" role="checkbox" aria-checked="false" id="terms">I agree to the terms</button>
+
+  <label for="pin">Confirmation PIN</label>
+  <input id="pin" name="pin" type="password">
+
+  <button type="submit" id="send" disabled>Send referral</button>
+  <button type="button" id="cancel">Cancel</button>
+</form>
+<!-- A second form, built without a <form> element at all. -->
+<div id="draft">
+  <label for="dname">Draft name</label>
+  <input id="dname">
+  <button type="button" id="savedraft">Save draft</button>
+</div>
+
+<script>
+  document.getElementById('savedraft').addEventListener('click', () => {
+    window.__savedDraft = true
+  })
+  const days = document.getElementById('days')
+  for (let d = 1; d <= 30; d++) {
+    const b = document.createElement('button')
+    b.type = 'button'; b.textContent = String(d)
+    if (d < 15) b.disabled = true
+    if (d === 15) b.setAttribute('aria-current', 'date')
+    b.addEventListener('click', () => {
+      document.getElementById('datebtn').textContent = 'September ' + d + ', 2026'
+      window.__picked = d
+      document.getElementById('pop').hidden = true
+      refresh()
+    })
+    days.appendChild(b)
+  }
+  document.getElementById('datebtn').addEventListener('pointerdown', () => {
+    document.getElementById('pop').hidden = false
+  })
+  document.getElementById('find').addEventListener('click', () => {
+    if (document.getElementById('phone').value) {
+      document.getElementById('patient').hidden = false
+      window.__found = true
+      refresh()
+    }
+  })
+  document.getElementById('terms').addEventListener('click', (e) => {
+    const on = e.currentTarget.getAttribute('aria-checked') === 'true'
+    e.currentTarget.setAttribute('aria-checked', on ? 'false' : 'true')
+  })
+  function refresh() {
+    document.getElementById('send').disabled = !(window.__found && window.__picked)
+  }
+  document.getElementById('f').addEventListener('submit', (e) => {
+    e.preventDefault(); window.__submitted = true
+  })
+</script>

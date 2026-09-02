@@ -51,9 +51,33 @@ export type JourneyRun = {
   finalObservation: PageObservation | null
 }
 
+/**
+ * A date the application is likely to accept.
+ *
+ * Two weeks out rather than today, because a form asking for a date usually
+ * wants one that has not happened yet - today is often the first thing a
+ * picker disables - and a date far enough ahead is still a plausible one.
+ */
+function syntheticDate(offsetDays = 14): string {
+  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000)
+  return date.toISOString().slice(0, 10)
+}
+
 /** Synthetic values. Never real credentials, never production data. */
 function syntheticValue(element: PageElement): string {
   const hint = `${element.name} ${element.inputType ?? ''}`.toLowerCase()
+  /*
+   * Typed fields first, and dates before anything else.
+   *
+   * A date input given prose keeps nothing at all: the browser rejects the
+   * value, the page reports no error, and the run carries on believing it
+   * filled a field that is still empty - which is how a form ends up sitting
+   * behind a submit button the application will not enable.
+   */
+  if (element.inputType === 'date') return syntheticDate()
+  if (element.inputType === 'datetime-local') return `${syntheticDate()}T10:30`
+  if (element.inputType === 'month') return syntheticDate().slice(0, 7)
+  if (element.inputType === 'time') return '10:30'
   if (element.inputType === 'email' || hint.includes('email')) {
     return 'forge-verifier@example.com'
   }
@@ -65,9 +89,42 @@ function syntheticValue(element: PageElement): string {
   if (element.inputType === 'url') return 'https://example.com'
   if (hint.includes('coupon') || hint.includes('promo')) return 'FORGE10'
   if (hint.includes('search') || hint.includes('query')) return 'test'
+  // An untyped field that says it wants a date still wants a date.
+  if (hint.includes('date')) return syntheticDate()
   if (hint.includes('name')) return 'Nadia Okonjo'
   return 'Forge verification'
 }
+
+/** An element's identity for comparison across observations, since refs are not. */
+function elementKey(element: PageElement): string {
+  return `${element.role}:${element.name.toLowerCase().replace(/\s+/g, ' ').trim()}`
+}
+
+/** Whether a control is holding anything. Unknown values count as empty. */
+function looksEmpty(element: PageElement, filled: Set<string>): boolean {
+  if (element.role === 'checkbox') return element.checked !== true
+  if (typeof element.value === 'string') return element.value.trim() === ''
+  return !filled.has(element.ref)
+}
+
+/**
+ * The first option in a `select` that means something.
+ *
+ * The leading option of a select is usually the instruction to pick one, and
+ * choosing it is the same as choosing nothing.
+ */
+const PLACEHOLDER_OPTION = /^(-+|\u2014|select|choose|pick|please|none|any)\b/i
+
+function firstRealOption(element: PageElement): string | null {
+  return (
+    element.options?.find(
+      (option) => option.trim() !== '' && !PLACEHOLDER_OPTION.test(option.trim()),
+    ) ?? null
+  )
+}
+
+/** Checkboxes a form is likely to be waiting on, beyond the ones marked required. */
+const CONSENT_WORDS = /\b(agree|accept|consent|terms|policy|confirm|acknowledge|understand)\b/i
 
 /**
  * Scores how well an element matches what this journey is trying to do.
@@ -227,14 +284,127 @@ export function findDisabledSubmitControl(
 }
 
 /**
+ * Controls a form has to be walked through before it will accept a submit.
+ *
+ * These are the ones that are neither a field nor the submit: the trigger that
+ * opens a date picker, the lookup that resolves a patient from a phone number,
+ * the button that opens a listbox. A journey that only fills inputs and then
+ * presses submit cannot complete a form built from any of them - which is
+ * precisely the form most applications now ship.
+ *
+ * Deliberately not `add`, `new`, `open` or `edit`: those overlap with the
+ * vocabulary of leaving the page, and pressing one abandons the form.
+ */
+const PREREQUISITE_WORDS =
+  /\b(pick|choose|select|calendar|date|time|schedule|find|search|lookup|browse|upload|attach|month|year)\b|\b(mm|dd|yyyy)\b/i
+
+/**
+ * The next control that might satisfy what the form is waiting for.
+ *
+ * Looked for only when the application has disabled its own submit button, so
+ * this never goes pressing things on a form that was already complete. The
+ * submit and destructive vocabularies are excluded for the usual reason: one
+ * of them is not a prerequisite, and the other throws the work away.
+ */
+export function findPrerequisiteControl(
+  elements: PageElement[],
+  used: Set<string> = new Set(),
+): PageElement | null {
+  return (
+    elements.find(
+      (element) =>
+        element.role === 'button' &&
+        !element.disabled &&
+        !used.has(elementKey(element)) &&
+        PREREQUISITE_WORDS.test(element.name) &&
+        !SUBMIT_WORDS.test(element.name) &&
+        !DESTRUCTIVE_WORDS.test(element.name),
+    ) ?? null
+  )
+}
+
+/**
+ * What appeared on the page that was not there before.
+ *
+ * Refs are handed out fresh on every observation, so they cannot be compared
+ * across two of them; role and name can. Counted rather than set-matched, so a
+ * calendar that adds a second "15" is seen to have added one.
+ */
+export function revealedElements(
+  before: PageObservation,
+  after: PageObservation,
+): PageElement[] {
+  const seen = new Map<string, number>()
+  for (const element of before.elements) {
+    const key = elementKey(element)
+    seen.set(key, (seen.get(key) ?? 0) + 1)
+  }
+
+  const revealed: PageElement[] = []
+  for (const element of after.elements) {
+    const key = elementKey(element)
+    const remaining = seen.get(key) ?? 0
+    if (remaining > 0) seen.set(key, remaining - 1)
+    else revealed.push(element)
+  }
+  return revealed
+}
+
+const DAY_NUMBER = /^\d{1,2}$/
+const MONTH_NAME =
+  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i
+
+/** Whether a control reads like one cell of a date grid. */
+function looksLikeDayCell(element: PageElement): boolean {
+  if (element.role !== 'button' && element.role !== 'option') return false
+  const name = element.name.trim()
+  return DAY_NUMBER.test(name) || (MONTH_NAME.test(name) && /\d/.test(name))
+}
+
+/**
+ * What to press in whatever just opened.
+ *
+ * A calendar is recognised as a grid rather than as a button that happens to
+ * be named "8", and the cell chosen is the first enabled one after today,
+ * because a date in the past is not what a form asking for one wants. A
+ * listbox is answered with its first enabled option. Anything else is left
+ * alone: pressing an unrecognised control inside an overlay is how a journey
+ * ends up somewhere it cannot explain.
+ */
+export function chooseRevealed(revealed: PageElement[]): PageElement | null {
+  const grid = revealed.filter(looksLikeDayCell)
+  if (grid.length >= 7) {
+    const today = grid.findIndex((element) => element.current)
+    const usable = grid.filter((element) => !element.disabled)
+    const ahead = usable.filter((element) => grid.indexOf(element) > today)
+    return ahead[0] ?? usable[0] ?? null
+  }
+
+  const options = revealed.filter(
+    (element) => element.role === 'option' && !element.disabled,
+  )
+  return options[0] ?? null
+}
+
+/**
  * How many actions one journey may take.
  *
  * A real journey is a handful of steps - open the list, start the new one,
- * fill it, submit it - and anything much longer is a loop rather than a
- * journey. The cap bounds the browser budget one journey can consume, so a
- * single wandering journey cannot starve the rest of the run.
+ * fill it, satisfy what it is waiting on, submit it - and anything much longer
+ * is a loop rather than a journey. The cap bounds the browser budget one
+ * journey can consume, so a single wandering journey cannot starve the rest of
+ * the run.
  */
-const MAX_STEPS = 6
+const MAX_STEPS = 8
+
+/**
+ * How many prerequisites one journey may work through.
+ *
+ * Each one costs up to three browser actions, and a form still refusing to
+ * enable its submit after three of them is telling us something the next click
+ * will not fix.
+ */
+const MAX_PREREQUISITES = 3
 
 /** A page's identity for the purpose of noticing that nothing happened. */
 function fingerprint(observation: PageObservation): string {
@@ -282,10 +452,20 @@ export async function runJourney(
   const usedRefs = new Set<string>()
   /** Fields already filled, so a re-rendered form is not typed into twice. */
   const filledRefs = new Set<string>()
+  /** Fields that would not take what we offered, so they are not retried. */
+  const refusedFields = new Set<string>()
+  /** Prerequisite controls already worked through, by name rather than by ref. */
+  const usedHelpers = new Set<string>()
+  /** Their labels, for the report: what a reader needs to see was attempted. */
+  const helpersTried: string[] = []
   /** Whether anything was actually activated. Nothing activated is not a pass. */
   let activated = false
   /** Whether a form was submitted. The strongest evidence a journey happened. */
   let submitted = false
+  /** Whether this journey has put anything into a form at all. */
+  let touchedForm = false
+  /** How many prerequisites have been worked through. */
+  let prerequisites = 0
 
   const note = (
     action: string,
@@ -298,14 +478,21 @@ export async function runJourney(
     trace.push(`${action}${target ? ` "${target}"` : ''} -> ${actual}`)
   }
 
+  /*
+   * `whenNotOk` exists for the actions where a refusal is not the
+   * application's fault. A field that would not take the value we invented for
+   * it is a limit of this agent, not a defect, and recording it as a failed
+   * step puts a bug in front of a reader that nobody can act on.
+   */
   const record = (
     action: string,
     target: string | null,
     expected: string,
     result: ActionResult,
+    whenNotOk: OperatorStep['status'] = 'failed',
   ) => {
     finalObservation = result.observation
-    note(action, target, expected, result.detail, result.ok ? 'passed' : 'failed')
+    note(action, target, expected, result.detail, result.ok ? 'passed' : whenNotOk)
 
     signal.status = result.observation.status || signal.status
     if (result.observation.transportError) signal.transportError = true
@@ -350,6 +537,113 @@ export async function runJourney(
 
   let observation = opened.observation
 
+  /* --------------------------------------------------------- prerequisites */
+
+  /**
+   * Works through one thing the form is waiting for.
+   *
+   * This is the step a name-matching walk cannot take. A date sits behind a
+   * button reading "Pick a date", which shares no words with the journey and
+   * is not a submit; pressing it opens a grid of day cells named "1", "2",
+   * "3", which share no words with anything at all. Neither is reachable by
+   * scoring labels against the journey, so both are found structurally: the
+   * application disabled its own submit button, something on the page is
+   * shaped like the way to satisfy it, and whatever that opens is answered on
+   * its own terms.
+   *
+   * Only ever entered from a disabled submit, so a form the application is
+   * already willing to accept is never poked at.
+   */
+  const satisfyPrerequisite = async (): Promise<
+    'advanced' | 'unavailable' | 'broke'
+  > => {
+    if (prerequisites >= MAX_PREREQUISITES) return 'unavailable'
+    // Three actions: open it, choose in it, and read the page back.
+    if (!budget.canSpend('browserActions', 3)) return 'unavailable'
+
+    const helper = findPrerequisiteControl(observation.elements, usedHelpers)
+    if (!helper) return 'unavailable'
+
+    prerequisites++
+    usedHelpers.add(elementKey(helper))
+    helpersTried.push(helper.name.replace(/\s+/g, ' ').trim())
+    usedRefs.add(helper.ref)
+
+    const before = observation
+    budget.spend('browserActions')
+    const opening = await executor.click(helper.ref)
+
+    /*
+     * A control this executor cannot operate is not a broken application.
+     *
+     * The fetch executor cannot activate anything that only does something
+     * through JavaScript, and a date picker is exactly that. Calling its
+     * refusal a failure would report a defect against every form built this
+     * way, on every run without a browser. Only what the application itself
+     * did wrong - a server error, an error on the console - fails the journey.
+     */
+    const broke =
+      opening.observation.status >= 500 ||
+      opening.observation.consoleErrors.length > 0 ||
+      opening.observation.networkErrors.length > 0
+
+    record(
+      'Open',
+      helper.name,
+      'The control the form is waiting on opens',
+      opening,
+      broke ? 'failed' : 'skipped',
+    )
+    if (broke) return 'broke'
+    if (!opening.ok) return 'unavailable'
+
+    activated = true
+    observation = opening.observation
+
+    const revealed = revealedElements(before, observation)
+    const choice = chooseRevealed(revealed)
+
+    if (!choice) {
+      /*
+       * Nothing in there this journey knows how to answer. If what opened was
+       * an overlay of choices, it is dismissed rather than left sitting over
+       * the form - one the run cannot use is still one the submit button is
+       * underneath. A control that merely revealed another field opened
+       * nothing, and pressing Escape at it would be a wasted action at best.
+       */
+      const overlay = revealed.filter(
+        (e) => e.role === 'button' || e.role === 'option',
+      ).length
+      if (overlay >= 3 && budget.canSpend('browserActions')) {
+        budget.spend('browserActions')
+        const dismissed = await executor.pressKey('Escape')
+        if (dismissed.ok) observation = dismissed.observation
+      }
+      // The press itself may have been the point - a lookup, a search - so
+      // this still counts as progress worth re-checking the form against.
+      return 'advanced'
+    }
+
+    budget.spend('browserActions')
+    const chosen = await executor.click(choice.ref)
+    const choiceBroke =
+      chosen.observation.status >= 500 ||
+      chosen.observation.consoleErrors.length > 0 ||
+      chosen.observation.networkErrors.length > 0
+
+    record(
+      'Choose',
+      choice.name,
+      `"${helper.name}" accepts a choice`,
+      chosen,
+      choiceBroke ? 'failed' : 'skipped',
+    )
+    if (choiceBroke) return 'broke'
+
+    observation = chosen.observation
+    return 'advanced'
+  }
+
   /* ----------------------------------------------------------------- walk */
 
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -387,23 +681,92 @@ export async function runJourney(
       return done('failed')
     }
 
-    // Fill before activating: a form submitted with empty required fields
-    // tests the validation, not the journey.
+    /*
+     * Fill before activating: a form submitted with empty required fields
+     * tests the validation, not the journey.
+     *
+     * A control already holding something is left as it is. Overwriting it
+     * would throw away whatever the application put there - the patient a
+     * lookup just resolved, the date a picker just set - and typing over it is
+     * how a journey undoes the step it took immediately before.
+     */
     const fields = observation.elements.filter(
       (e) =>
         (e.role === 'input' || e.role === 'textarea') &&
         !e.disabled &&
-        !filledRefs.has(e.ref),
+        !filledRefs.has(e.ref) &&
+        !refusedFields.has(elementKey(e)) &&
+        looksEmpty(e, filledRefs),
     )
 
     for (const field of fields.slice(0, 8)) {
       if (!budget.canSpend('browserActions')) break
       budget.spend('browserActions')
-      filledRefs.add(field.ref)
       const value = syntheticValue(field)
       const filled = await executor.fill(field.ref, value)
-      record('Fill', field.name, `Field accepts "${value}"`, filled)
+      touchedForm = true
+
+      if (filled.ok) {
+        filledRefs.add(field.ref)
+        record('Fill', field.name, `Field accepts "${value}"`, filled)
+      } else {
+        /*
+         * The field kept nothing. Remembered by name so the next iteration
+         * does not spend the budget typing the same rejected value again, and
+         * recorded as skipped rather than failed: what this proves is that the
+         * agent had nothing this field would take.
+         */
+        refusedFields.add(elementKey(field))
+        record('Fill', field.name, `Field accepts "${value}"`, filled, 'skipped')
+      }
       if (filled.observation) observation = filled.observation
+    }
+
+    /* A select is a field too, and one no amount of typing can answer. */
+    const selects = observation.elements.filter(
+      (e) =>
+        e.role === 'select' &&
+        !e.disabled &&
+        !filledRefs.has(e.ref) &&
+        looksEmpty(e, filledRefs),
+    )
+
+    for (const select of selects.slice(0, 4)) {
+      const option = firstRealOption(select)
+      if (!option) continue
+      if (!budget.canSpend('browserActions')) break
+      budget.spend('browserActions')
+      filledRefs.add(select.ref)
+      touchedForm = true
+      const chosen = await executor.selectOption(select.ref, option)
+      record('Choose', select.name, `"${option}" can be chosen`, chosen, 'skipped')
+      observation = chosen.observation
+    }
+
+    /*
+     * The boxes a form will not submit without.
+     *
+     * Only the ones the page marks required or that read as consent - ticking
+     * every checkbox on a page would change filters, toggle settings, and opt
+     * a test account into things nobody asked for.
+     */
+    const consents = observation.elements.filter(
+      (e) =>
+        e.role === 'checkbox' &&
+        !e.disabled &&
+        e.checked !== true &&
+        !filledRefs.has(e.ref) &&
+        (e.required === true || CONSENT_WORDS.test(e.name)),
+    )
+
+    for (const box of consents.slice(0, 4)) {
+      if (!budget.canSpend('browserActions')) break
+      budget.spend('browserActions')
+      filledRefs.add(box.ref)
+      touchedForm = true
+      const ticked = await executor.check(box.ref)
+      record('Tick', box.name, `"${box.name}" can be turned on`, ticked, 'skipped')
+      observation = ticked.observation
     }
 
     /*
@@ -413,7 +776,7 @@ export async function runJourney(
      * it must not be used on a page that has no fields at all.
      */
     const onForm = observation.elements.some(
-      (e) => e.role === 'input' || e.role === 'textarea',
+      (e) => e.role === 'input' || e.role === 'textarea' || e.role === 'select',
     )
 
     const ranked = observation.elements
@@ -429,14 +792,19 @@ export async function runJourney(
       .sort((a, b) => b.score - a.score)
 
     /*
-     * Once fields have been filled the journey is about submitting them.
+     * Once a form has been touched the journey is about submitting it.
      *
      * A button that matches the journey wins first; failing that, the button
      * that submits the form, whatever it is called. Falling back to a link at
      * this point would abandon the input that was just entered.
+     *
+     * The test is the whole journey's, not this iteration's: after opening a
+     * date picker and choosing a day, nothing new gets filled, and a run that
+     * asked only "did I just fill something" would go back to ranking links
+     * and follow the navigation out of the form it had finally completed.
      */
-    const justFilled = fields.length > 0
-    const primary = justFilled
+    const formPending = onForm && touchedForm && !submitted
+    const primary = formPending
       ? /*
          * No link fallback here, deliberately.
          *
@@ -459,7 +827,11 @@ export async function runJourney(
        * buttons it did see are what a reader needs to tell a missing submit
        * control from one this rule failed to recognise.
        */
-      if (justFilled || (filledRefs.size > 0 && !submitted)) {
+      /*
+       * Only while a form is still outstanding. Once it has been submitted the
+       * journey has moved on, and the page it landed on is not a form report.
+       */
+      if (touchedForm && !submitted) {
         /*
          * A disabled submit is a different answer from a missing one. The
          * application rendered the way to finish and refused to enable it,
@@ -469,8 +841,22 @@ export async function runJourney(
          */
         const blocked = findDisabledSubmitControl(observation.elements)
         if (blocked) {
+          /*
+           * Before reporting it, try to satisfy it. A disabled submit is the
+           * application saying what is missing, and the date picker or lookup
+           * that supplies it is usually right there on the form.
+           */
+          const attempt = await satisfyPrerequisite()
+          if (attempt === 'broke') return done('failed')
+          if (attempt === 'advanced') continue
+
+          /*
+           * Read from the page rather than from what this run remembers
+           * typing. A field the agent filled with something the form threw
+           * away is empty, whatever the agent's own bookkeeping says.
+           */
           const unfilled = observation.elements
-            .filter((e) => e.required && !filledRefs.has(e.ref))
+            .filter((e) => e.required && looksEmpty(e, filledRefs))
             .map((e) => e.name.replace(/\s+/g, ' ').trim())
             .filter(Boolean)
             .slice(0, 5)
@@ -482,6 +868,10 @@ export async function runJourney(
             `The form was filled, but "${blocked.name}" is disabled, so the application does not consider it complete.${
               unfilled.length > 0
                 ? ` Required and not filled: ${unfilled.join(', ')}.`
+                : ''
+            }${
+              helpersTried.length > 0
+                ? ` Worked through: ${helpersTried.join(', ')}.`
                 : ''
             }`,
             'skipped',
@@ -623,7 +1013,7 @@ export async function runJourney(
    * did not happen. Calling that a pass is the same mistake as calling
    * "reached the form" a pass, one step further along.
    */
-  if (filledRefs.size > 0 && !submitted) {
+  if (touchedForm && !submitted) {
     note(
       'Submit form',
       journey.name,

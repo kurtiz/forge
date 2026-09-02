@@ -6,6 +6,7 @@ import type {
   ActionResult,
   BrowserExecutor,
   PageElement,
+  PageKey,
   PageObservation,
 } from '#/server/execution/types'
 
@@ -65,6 +66,18 @@ class WalkingExecutor implements BrowserExecutor {
   async fill(ref: string, value: string) {
     this.actions.push(`fill ${ref}=${value}`)
     return { ok: true, detail: 'Filled', observation: this.current }
+  }
+  async selectOption(ref: string, value: string) {
+    this.actions.push(`select ${ref}=${value}`)
+    return { ok: true, detail: 'Chose', observation: this.current }
+  }
+  async check(ref: string) {
+    this.actions.push(`check ${ref}`)
+    return { ok: true, detail: 'Ticked', observation: this.current }
+  }
+  async pressKey(key: PageKey) {
+    this.actions.push(`key ${key}`)
+    return { ok: true, detail: `Pressed ${key}`, observation: this.current }
   }
   async submit(ref: string) {
     this.actions.push(`submit ${ref}`)

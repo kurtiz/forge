@@ -54,6 +54,17 @@ class StubExecutor implements BrowserExecutor {
     this.filled.push({ ref, value })
     return this.result('Filled')
   }
+  async selectOption(ref: string, value: string) {
+    this.filled.push({ ref, value })
+    return this.result('Chose')
+  }
+  async check(ref: string) {
+    this.filled.push({ ref, value: 'on' })
+    return this.result('Ticked')
+  }
+  async pressKey() {
+    return this.result('Pressed')
+  }
   async submit() {
     return this.result('Submitted')
   }

@@ -7,11 +7,28 @@
  * a second provider be added without touching the agent.
  */
 
+/**
+ * What kind of thing a control is.
+ *
+ * `option` and `checkbox` are here because a modern form is not only inputs
+ * and buttons. A listbox item inside a popover and a consent checkbox each
+ * need an interaction that typing cannot express, and a page model that calls
+ * them both "button" leaves the agent guessing which of them it may press.
+ */
+export type ElementRole =
+  | 'button'
+  | 'link'
+  | 'input'
+  | 'select'
+  | 'textarea'
+  | 'option'
+  | 'checkbox'
+
 /** A single interactive element the agent is allowed to target. */
 export type PageElement = {
   /** Stable handle the executor resolves back to a real element. */
   ref: string
-  role: 'button' | 'link' | 'input' | 'select' | 'textarea'
+  role: ElementRole
   /** Accessible name, or the closest thing the page offers. */
   name: string
   /** For links and form actions: where activating it goes. */
@@ -24,6 +41,26 @@ export type PageElement = {
    * finding, and "there is no submit button" is a different and wrong one.
    */
   disabled?: boolean
+  /**
+   * What the control currently holds.
+   *
+   * Without it a fill cannot be checked: a date input silently rejects a value
+   * it cannot parse, the page reports nothing, and the run goes on believing
+   * it filled a field that is still empty. It is also how a required field
+   * that was never filled gets named in a report, rather than inferred from
+   * which refs the agent happens to have typed into.
+   */
+  value?: string
+  /** For checkboxes, switches and radios: whether they are on. */
+  checked?: boolean
+  /** The labels a `select` offers, so one can be chosen by name. */
+  options?: string[]
+  /**
+   * Carries `aria-current`. On a calendar that marks today, which is what lets
+   * a journey choose a date in the future rather than whichever cell the grid
+   * happens to render first.
+   */
+  current?: boolean
 }
 
 /** Compact page state. Never the raw HTML - that is captured as evidence. */
@@ -55,6 +92,9 @@ export type Screenshot = {
 
 export type ExecutorKind = 'solari' | 'fetch'
 
+/** The keys a journey is allowed to send. Deliberately a very short list. */
+export type PageKey = 'Escape' | 'Enter' | 'Tab'
+
 export interface BrowserExecutor {
   readonly kind: ExecutorKind
   /** Provider session id, when the provider has one. */
@@ -63,7 +103,20 @@ export interface BrowserExecutor {
   navigate(url: string): Promise<ActionResult>
   readPage(): Promise<PageObservation>
   click(ref: string): Promise<ActionResult>
+  /**
+   * Types into a field and reports whether the field kept the value. A fill
+   * the page rejected is a failed action, not a silent one.
+   */
   fill(ref: string, value: string): Promise<ActionResult>
+  /** Chooses an option in a `select`, by option label or by value. */
+  selectOption(ref: string, value: string): Promise<ActionResult>
+  /** Turns a checkbox, radio or switch on. A control already on is left alone. */
+  check(ref: string): Promise<ActionResult>
+  /**
+   * Sends a key to the page. Used to dismiss an overlay the journey opened and
+   * found nothing to use in, so it cannot sit on top of the form afterwards.
+   */
+  pressKey(key: PageKey): Promise<ActionResult>
   submit(ref: string): Promise<ActionResult>
   screenshot(): Promise<Screenshot | null>
   /** Replay URL for the session, once it is released. */

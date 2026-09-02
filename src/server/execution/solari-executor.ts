@@ -8,9 +8,11 @@
  */
 import { CdpConnection } from './cdp'
 import {
+  checkScript,
   clickScript,
   fillScript,
   OBSERVE_SCRIPT,
+  selectScript,
   submitScript,
 } from './page-script'
 import {
@@ -19,6 +21,7 @@ import {
   type ActionResult,
   type BrowserExecutor,
   type PageElement,
+  type PageKey,
   type PageObservation,
   type Screenshot,
 } from './types'
@@ -371,21 +374,86 @@ export class SolariBrowserExecutor implements BrowserExecutor {
     return this.act(ref, clickScript(ref), 'Clicked')
   }
 
+  /**
+   * Types into a field, then reports what the field kept.
+   *
+   * The page-side script returns the value after the write, and an empty
+   * result for a non-empty write means the control rejected it - the case a
+   * date input makes silently, and the one that used to leave a run convinced
+   * it had filled a field that was still blank.
+   */
   async fill(ref: string, value: string): Promise<ActionResult> {
-    return this.act(ref, fillScript(ref, value), 'Typed into')
+    return this.act(ref, fillScript(ref, value), 'Typed into', value)
+  }
+
+  async selectOption(ref: string, value: string): Promise<ActionResult> {
+    return this.act(ref, selectScript(ref, value), 'Chose in', value)
+  }
+
+  async check(ref: string): Promise<ActionResult> {
+    return this.act(ref, checkScript(ref), 'Turned on')
+  }
+
+  /**
+   * Sends a key through CDP rather than a synthetic KeyboardEvent.
+   *
+   * An overlay is dismissed by the browser's own key handling as often as by
+   * the page's, and a dispatched event is not the same thing to either.
+   */
+  async pressKey(key: PageKey): Promise<ActionResult> {
+    const codes: Record<PageKey, number> = { Escape: 27, Enter: 13, Tab: 9 }
+    try {
+      for (const type of ['keyDown', 'keyUp'] as const) {
+        await this.connection.send(
+          'Input.dispatchKeyEvent',
+          {
+            type,
+            key,
+            code: key,
+            windowsVirtualKeyCode: codes[key],
+            nativeVirtualKeyCode: codes[key],
+          },
+          this.cdpSessionId!,
+        )
+      }
+    } catch {
+      return {
+        ok: false,
+        detail: `The page did not accept the ${key} key.`,
+        observation: await this.readPage(),
+      }
+    }
+    await this.settle()
+    return {
+      ok: true,
+      detail: `Pressed ${key}.`,
+      observation: await this.readPage(),
+    }
   }
 
   async submit(ref: string): Promise<ActionResult> {
     return this.act(ref, submitScript(ref), 'Submitted the form from')
   }
 
+  /**
+   * Runs one page-side action and reads the page back.
+   *
+   * `wrote` is the value the action was supposed to leave behind. When it is
+   * given, the script's `filled:<value>` answer is checked against it, so a
+   * control that quietly discarded the input reports a failed action instead
+   * of a successful one.
+   */
   private async act(
     ref: string,
     script: string,
     verb: string,
+    wrote?: string,
   ): Promise<ActionResult> {
-    const name =
-      this.lastObservation?.elements.find((e) => e.ref === ref)?.name ?? ref
+    const element = this.lastObservation?.elements.find((e) => e.ref === ref)
+    const name = element?.name ?? ref
+    // Never quote back what was typed into a password field.
+    const quoted =
+      element?.inputType === 'password' ? 'what it was given' : `"${wrote ?? ''}"`
     const outcome = await this.evaluate<string>(script)
 
     if (outcome === 'missing') {
@@ -393,6 +461,33 @@ export class SolariBrowserExecutor implements BrowserExecutor {
         ok: false,
         detail: `"${name}" is no longer on the page.`,
         observation: await this.readPage(),
+      }
+    }
+
+    if (outcome === 'unmatched') {
+      return {
+        ok: false,
+        detail: `"${name}" offers no option matching ${quoted}.`,
+        observation: await this.readPage(),
+      }
+    }
+
+    if (outcome === 'unchanged') {
+      return {
+        ok: false,
+        detail: `"${name}" did not react.`,
+        observation: await this.readPage(),
+      }
+    }
+
+    if (wrote !== undefined && typeof outcome === 'string' && outcome.startsWith('filled:')) {
+      const kept = outcome.slice('filled:'.length)
+      if (wrote.trim() !== '' && kept.trim() === '') {
+        return {
+          ok: false,
+          detail: `"${name}" did not accept ${quoted}: the field is still empty.`,
+          observation: await this.readPage(),
+        }
       }
     }
 
