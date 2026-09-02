@@ -5,7 +5,7 @@
  * checking first, so two concurrent writes cannot produce two monitors on one
  * project.
  */
-import { and, asc, eq, isNotNull, lte } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, isNull, lte } from 'drizzle-orm'
 import type { Schedule, ScheduleOutcome } from '../contracts'
 import { db, newId, nowIso, tables } from '../db'
 import { nextRunAt } from './schedule'
@@ -100,6 +100,8 @@ export async function listDueSchedules(limit = 10): Promise<DueSchedule[]> {
         eq(tables.schedules.enabled, true),
         isNotNull(tables.schedules.nextRunAt),
         lte(tables.schedules.nextRunAt, nowIso()),
+        // A project awaiting deletion must not keep starting billable runs.
+        isNull(tables.projects.deletedAt),
       ),
     )
     .orderBy(asc(tables.schedules.nextRunAt))

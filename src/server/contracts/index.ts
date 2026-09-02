@@ -249,14 +249,12 @@ export const projectSchema = z.object({
   targetUrl: z.string(),
   repoUrl: z.string().nullable(),
   goal: z.string().nullable(),
-  authLoginPath: z.string().nullable(),
-  authUsername: z.string().nullable(),
   /**
-   * Whether a password is stored, never the password. The ciphertext has no
-   * representation in this contract at all, so it cannot reach a response by
-   * being forgotten in a mapper.
+   * How many test accounts this project holds. The credentials themselves are
+   * a separate contract, and the ciphertext has no representation in either, so
+   * a password cannot reach a response by being forgotten in a mapper.
    */
-  hasCredentials: z.boolean(),
+  credentialCount: z.number(),
   /**
    * Where a pull request's preview deployment lives, for projects whose host
    * does not report deployments to GitHub. Placeholders: `{number}`, `{branch}`,
@@ -269,6 +267,64 @@ export const projectSchema = z.object({
 export type Project = z.infer<typeof projectSchema>
 
 /* -------------------------------------------------------------- requests */
+
+/* ---------------------------------------------------- project credentials */
+
+/**
+ * A stored test account, as the console shows it. There is no field for the
+ * password: it goes in and is never read back out.
+ */
+export const projectCredentialSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  label: z.string(),
+  loginPath: z.string(),
+  username: z.string(),
+  isDefault: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+export type ProjectCredential = z.infer<typeof projectCredentialSchema>
+
+const credentialFields = {
+  label: z
+    .string()
+    .trim()
+    .max(60)
+    .optional()
+    .transform((v) => (v ? v : 'Test account')),
+  loginPath: z
+    .string()
+    .trim()
+    .max(300)
+    .optional()
+    .transform((v) => (v ? v : null)),
+  username: z.string().trim().min(1, 'A username is required').max(200),
+}
+
+export const createCredentialInputSchema = z.object({
+  projectId: z.string().min(3).max(64),
+  ...credentialFields,
+  password: z.string().min(1, 'A password is required').max(300),
+  isDefault: z.boolean().optional(),
+})
+export type CreateCredentialInput = z.infer<typeof createCredentialInputSchema>
+
+/**
+ * Editing an account. The password is optional: leaving it blank keeps the
+ * stored one, which is the only way to change a label or a login path without
+ * having to know the password again.
+ */
+export const updateCredentialInputSchema = z.object({
+  credentialId: z.string().min(3).max(64),
+  ...credentialFields,
+  password: z
+    .string()
+    .max(300)
+    .optional()
+    .transform((v) => (v ? v : null)),
+})
+export type UpdateCredentialInput = z.infer<typeof updateCredentialInputSchema>
 
 export const createProjectInputSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(60),
@@ -286,9 +342,16 @@ export const createProjectInputSchema = z.object({
     .optional()
     .transform((v) => (v ? v : null)),
   /**
-   * Test-account credentials for a login-gated target. Dedicated test accounts
-   * only - this is stated in the form copy and in the security docs.
+   * The first test account for a login-gated target, created with the project.
+   * Dedicated test accounts only - this is stated in the form copy and in the
+   * security docs. More can be added afterwards, one per role.
    */
+  authLabel: z
+    .string()
+    .trim()
+    .max(60)
+    .optional()
+    .transform((v) => (v ? v : null)),
   authLoginPath: z
     .string()
     .trim()

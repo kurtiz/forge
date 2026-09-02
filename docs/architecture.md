@@ -45,6 +45,7 @@ apart the day one of those reasons shows up:
 | `server/tokens` | API token format, hashing, storage | db |
 | `server/github` | App auth, webhooks, checks, preview URLs | runs, security |
 | `server/monitoring` | Schedules, cadence arithmetic, the cron tick | runs |
+| `server/cleanup` | Project deletion: soft delete, queue, dead letters | runs |
 | `server/rest` | The public REST API | runs, auth, security |
 | `server/api` | Typed server functions | runs, auth |
 
@@ -303,6 +304,31 @@ arrive at once.
 Notifications fire on transitions, not on states. First failure, recovery, and
 every fourth consecutive failure after that. A monitor that alerts every 30
 minutes for a week gets muted, and a muted monitor is worth nothing.
+
+## Deleting a project
+
+D1 holds the rows and R2 holds the artifacts, and nothing spans both. The order
+is chosen so no failure leaves something half-visible:
+
+```text
+mark deleted        the project vanishes from every query at once
+      ↓
+queue the cleanup   the request returns; nothing waits on storage
+      ↓
+purge R2 prefixes   a few runs per message, so one large project
+delete run rows     cannot exhaust a consumer's time budget
+      ↓
+delete the project  only once nothing of it remains
+```
+
+Artifacts are found by R2 prefix rather than by the storage keys D1 holds. The
+prefix is authoritative: an object whose metadata row was lost is still under
+`runs/<id>/`, and it is exactly the object a key-driven cleanup would strand.
+
+A message that keeps failing ends on the dead-letter queue, whose consumer
+records it and acknowledges it. Retrying there would re-enter the loop that
+already failed; what is needed is a visible record. The project row survives,
+still marked deleted, which is what keeps the leftover objects findable.
 
 ## What the agent never owns
 

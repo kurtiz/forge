@@ -145,27 +145,69 @@ export const projects = sqliteTable(
     targetUrl: text('target_url').notNull(),
     repoUrl: text('repo_url'),
     goal: text('goal'),
-    /** Path on the target site carrying the login form, e.g. `/login`. */
-    authLoginPath: text('auth_login_path'),
-    /** Not a secret; stored as given so it can be shown back in the UI. */
-    authUsername: text('auth_username'),
-    /**
-     * AES-GCM ciphertext, base64. Written by `encryptCredential`, read only
-     * inside the run Durable Object. Never leaves the server in any response.
-     */
-    authPasswordEncrypted: text('auth_password_encrypted'),
-    /** Solari browser profile holding the signed-in state between runs. */
-    authProfileId: text('auth_profile_id'),
     /**
      * Preview URL pattern for pull requests, e.g.
      * `https://pr-{number}.example.pages.dev`. Null: wait for a deployment.
      */
     previewUrlTemplate: text('preview_url_template'),
+    /**
+     * Set the moment a delete is requested, before any artifact is touched.
+     *
+     * A project's evidence lives in R2 and its rows live in D1, and the two
+     * cannot be removed in one transaction. Marking the row first makes the
+     * project invisible immediately - to every query, to scheduled runs, to
+     * webhooks - while a queue works through the objects. The row is removed
+     * for real once they are gone, so a half-deleted project is never a
+     * half-visible one.
+     */
+    deletedAt: text('deleted_at'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
     index('projects_user_idx').on(table.userId, table.createdAt),
+    index('projects_deleted_idx').on(table.deletedAt),
+  ],
+)
+
+/**
+ * Test accounts for a login-gated target.
+ *
+ * A table rather than columns on `projects`, because an application worth
+ * verifying usually has more than one kind of user: what an administrator can
+ * reach and what a member can reach are different applications in practice, and
+ * a project that can only hold one login can only ever verify one of them.
+ *
+ * Exactly one credential per project is the default, and that is the one a run
+ * signs in with.
+ */
+export const projectCredentials = sqliteTable(
+  'project_credentials',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** What this account is for: "Administrator", "Member", "Read-only". */
+    label: text('label').notNull(),
+    /** Path on the target site carrying the login form, e.g. `/login`. */
+    loginPath: text('login_path').notNull(),
+    /** Not a secret; stored as given so it can be shown back in the UI. */
+    username: text('username').notNull(),
+    /**
+     * AES-GCM ciphertext, base64. Written by `encryptCredential`, read only
+     * inside the run Durable Object. Never leaves the server in any response.
+     */
+    passwordEncrypted: text('password_encrypted').notNull(),
+    /** Solari browser profile holding the signed-in state between runs. */
+    profileId: text('profile_id'),
+    /** The account runs sign in with. Exactly one per project. */
+    isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('project_credentials_project_idx').on(table.projectId, table.createdAt),
   ],
 )
 
@@ -431,6 +473,7 @@ export const schedules = sqliteTable(
 export const projectRelations = relations(projects, ({ one, many }) => ({
   owner: one(user, { fields: [projects.userId], references: [user.id] }),
   runs: many(runs),
+  credentials: many(projectCredentials),
   schedule: one(schedules, {
     fields: [projects.id],
     references: [schedules.projectId],
@@ -469,6 +512,7 @@ export const schema = {
   account,
   verification,
   projects,
+  projectCredentials,
   runs,
   journeys,
   journeySteps,

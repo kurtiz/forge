@@ -155,9 +155,9 @@ credentials, or repository contents.
 
 ### Target-application logins
 
-A project may carry a test account for an application behind a login. That
-password is the only user-supplied secret Forge stores, and it is handled on
-four rules:
+A project may carry test accounts for an application behind a login, one per
+role, in `project_credentials`. Those passwords are the only user-supplied
+secrets Forge stores, and they are handled on four rules:
 
 **Encrypted at rest.** AES-GCM with a fresh IV per write, under a key derived
 from the `FORGE_CREDENTIAL_KEY` Worker secret (`security/credentials.ts`).
@@ -166,9 +166,10 @@ Durable Object, immediately before the value is typed. Without the key
 configured, a project simply cannot store a login — a better failure than
 encrypting under a predictable key.
 
-**Never returned.** `Project` has no field for the ciphertext, only a
-`hasCredentials` boolean, so the password cannot reach a response by being
-forgotten in a mapper. Reading it requires calling `readProjectCredentials` by
+**Never returned.** Neither `Project` nor `ProjectCredential` has a field for
+the ciphertext - a project reports only how many accounts it holds - so a
+password cannot reach a response by being forgotten in a mapper. Reading one
+requires calling `readProjectCredentials` by
 name.
 
 **Never shown to the model.** Login fields are selected structurally, by input

@@ -127,7 +127,8 @@ Seeded defects:
 3. The Pricing link in the navigation points at a page that was renamed.
 
 Checkout and invitations sit behind a login (`ines@northbeam.test` /
-`northbeam-demo` at `/demo/login`). An unauthenticated request is answered with
+`northbeam-demo` at `/demo/login`). A project can hold one test account per
+role; runs sign in with the one marked as used for runs. An unauthenticated request is answered with
 the login form at **HTTP 200** — no redirect, no 401 — which is the auth wall a
 verifier cannot see from status codes. Run the demo without credentials and
 Forge reports `AUTH_FAILURE`; add the test account under **This app needs a
@@ -251,6 +252,8 @@ Before deploying, create the resources and paste the ids into `wrangler.jsonc`:
 ```bash
 wrangler d1 create forge
 wrangler r2 bucket create forge-evidence
+wrangler queues create forge-cleanup
+wrangler queues create forge-cleanup-dlq
 
 wrangler secret put BETTER_AUTH_SECRET
 wrangler secret put SOLARI_API_KEY        # optional
@@ -401,6 +404,16 @@ credential are configured, because a button that dead-ends on a provider error
 page is worse than no button. Account linking is enabled for GitHub alone: it
 verifies email addresses, and trusting a provider that does not would let
 someone claim an existing account by signing up elsewhere with its address.
+
+**Deleting a project deletes its evidence.** A project's rows live in D1 and
+its artifacts live in R2, and no transaction spans the two, so the row is marked
+deleted first - which hides it from every query, every scheduled run, and every
+webhook at once - and a queue then walks its runs, purges each one's R2 prefix,
+and removes the row for real once nothing is left. Artifacts are addressed by
+prefix rather than by the keys D1 holds, so an object whose metadata row was
+lost is swept up rather than stranded. A cleanup that keeps failing ends on a
+dead-letter queue with the project still marked deleted: invisible to its owner,
+and still findable by an operator.
 
 **Test with synthetic data.** The Operator fills forms with obviously synthetic
 values and never real credentials. Point Forge at previews and staging, not at

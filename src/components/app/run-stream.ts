@@ -38,6 +38,20 @@ export function useRunStream({
     setEvents(initialEvents)
   }, [initialEvents])
 
+  /*
+   * Follow the loader's status.
+   *
+   * Without this the page ends a run stuck on whichever phase it was showing
+   * when the stream closed - "Reporting", almost always. The last phase event
+   * carries a terminal status, which the stream handler ignores because it only
+   * tracks live phases; the router then refetches the finished run, and the
+   * status it brings back has to land somewhere. It lands here, so the page
+   * settles on "Completed" without anyone reaching for reload.
+   */
+  useEffect(() => {
+    setCurrentStatus(status)
+  }, [status])
+
   useEffect(() => {
     if (!LIVE_STATUSES.includes(status)) {
       setLive(false)
@@ -56,15 +70,16 @@ export function useRunStream({
             : [...current, event].sort((a, b) => a.sequence - b.sequence),
         )
         if (event.type === 'phase.changed') {
+          // Terminal phases included: "completed" and "canceled" arrive this
+          // way and are exactly the ones the page must not miss.
           const target = (event.data as Record<string, unknown>)
             .status as RunStatus | undefined
-          if (target && LIVE_STATUSES.includes(target)) {
-            setCurrentStatus(target)
-          }
+          if (target) setCurrentStatus(target)
         }
         if (event.type === 'run.completed' || event.type === 'run.failed') {
           finish()
         }
+        if (event.type === 'run.canceled') finish()
       } catch {
         // A malformed frame is not worth tearing the stream down for.
       }

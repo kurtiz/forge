@@ -25,6 +25,7 @@ import {
 } from '../security'
 import * as repo from '../runs/repository'
 import { startRun } from '../runs/service'
+import { requestProjectDeletion } from '../cleanup'
 
 /** JSON with the status a client can branch on, and nothing else. */
 export function json(body: unknown, status = 200): Response {
@@ -189,6 +190,26 @@ export async function listProjectsHandler(request: Request): Promise<Response> {
   if (user instanceof Response) return user
 
   return json({ projects: await repo.listProjects(user.id) })
+}
+
+/**
+ * `DELETE /api/v1/projects/:projectId`
+ *
+ * Answers as soon as the project is invisible. Its evidence in R2 is removed by
+ * the cleanup queue afterwards, which is why this is a 202 and not a 204: the
+ * project is gone from every view, and the storage is on its way out.
+ */
+export async function deleteProjectHandler(
+  request: Request,
+  projectId: string,
+): Promise<Response> {
+  const user = await authenticate(request)
+  if (user instanceof Response) return user
+
+  await repo.assertProjectAccess(projectId, user.id)
+  await requestProjectDeletion(projectId)
+
+  return json({ deleted: projectId, artifacts: 'queued' }, 202)
 }
 
 /** `GET /api/v1/whoami` - what `forge login` calls to confirm a token works. */

@@ -15,6 +15,7 @@ import { RunStatusPill, TriggerTag } from '#/components/app/status'
 import { RelativeTime } from '#/components/app/relative-time'
 import { ExecutorNotice } from '#/components/app/executor-notice'
 import { SchedulePanel } from '#/components/app/schedule-panel'
+import { CredentialsPanel } from '#/components/app/credentials-panel'
 import {
   deleteProject,
   getProject,
@@ -31,7 +32,7 @@ export const Route = createFileRoute('/projects/$projectId')({
 })
 
 function ProjectPage() {
-  const { project, runs, schedule } = Route.useLoaderData()
+  const { project, runs, schedule, credentials } = Route.useLoaderData()
   const { session } = Route.useRouteContext()
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -129,6 +130,13 @@ function ProjectPage() {
         />
 
         <ExecutorNotice executor={session.executor} />
+
+        <Section
+          title="Test accounts"
+          meta={credentials.length > 0 ? `${credentials.length} stored` : undefined}
+        >
+          <CredentialsPanel projectId={project.id} credentials={credentials} />
+        </Section>
 
         <Section title="Monitoring">
           <SchedulePanel projectId={project.id} schedule={schedule} />

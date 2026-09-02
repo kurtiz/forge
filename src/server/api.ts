@@ -12,7 +12,9 @@ import { env } from 'cloudflare:workers'
 import { z } from 'zod'
 import {
   createApiTokenInputSchema,
+  createCredentialInputSchema,
   createProjectInputSchema,
+  updateCredentialInputSchema,
   updateProjectInputSchema,
   upsertScheduleInputSchema,
   type ApiToken,
@@ -21,6 +23,7 @@ import {
   type GitHubInstallation,
   type Journey,
   type Project,
+  type ProjectCredential,
   type Run,
   type RunEvent,
   type Schedule,
@@ -43,6 +46,7 @@ import {
 import * as repo from './runs/repository'
 import { cancelRun, startRun } from './runs/service'
 import { listRunEvidence } from './evidence/store'
+import { requestProjectDeletion } from './cleanup'
 import * as tokens from './tokens/repository'
 import * as monitor from './monitoring/repository'
 import { githubAppSlug, githubConfigured } from './github/app'
@@ -83,6 +87,38 @@ export const getSession = createServerFn({ method: 'GET' }).handler(
     },
     development: env.FORGE_ENV === 'development',
   }),
+)
+
+/* ----------------------------------------------------------------- profile */
+
+export type ProfilePayload = {
+  user: SessionUser & {
+    image: string | null
+    createdAt: string
+    /** Social providers linked to this account, for display. */
+    providers: string[]
+  }
+  stats: { projects: number; runs: number; openFindings: number }
+}
+
+export const getProfile = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<ProfilePayload> => {
+    const me = await user()
+    const [account, stats] = await Promise.all([
+      repo.readAccount(me.id),
+      repo.accountStats(me.id),
+    ])
+
+    return {
+      user: {
+        ...me,
+        image: account?.image ?? null,
+        createdAt: account?.createdAt ?? new Date().toISOString(),
+        providers: account?.providers ?? [],
+      },
+      stats,
+    }
+  },
 )
 
 /* ---------------------------------------------------------------- projects */
@@ -146,29 +182,127 @@ export const createProject = createServerFn({ method: 'POST' })
       )
     }
 
-    // Encrypted at the boundary: the plaintext never reaches a query.
-    const authPasswordEncrypted = data.authPassword
-      ? await encryptCredential(data.authPassword)
-      : null
-
-    return repo.createProject({
+    const project = await repo.createProject({
       userId: me.id,
       name: data.name,
       targetUrl: target.toString(),
       repoUrl,
       goal: data.goal,
-      authLoginPath: wantsAuth ? normaliseLoginPath(data.authLoginPath) : null,
-      authUsername: data.authUsername,
-      authPasswordEncrypted,
+    })
+
+    if (wantsAuth && data.authUsername && data.authPassword) {
+      await repo.insertProjectCredential({
+        projectId: project.id,
+        label: data.authLabel ?? 'Test account',
+        loginPath: normaliseLoginPath(data.authLoginPath),
+        username: data.authUsername,
+        // Encrypted at the boundary: the plaintext never reaches a query.
+        passwordEncrypted: await encryptCredential(data.authPassword),
+        isDefault: true,
+      })
+      return { ...project, credentialCount: 1 }
+    }
+
+    return project
+  })
+
+/* ------------------------------------------------------- test accounts */
+
+/**
+ * Adds a test account to a project.
+ *
+ * An application worth verifying usually has more than one kind of user, and
+ * what an administrator can reach is not what a member can reach. A project
+ * holds one account per role; runs sign in with the one marked default.
+ */
+export const addCredential = createServerFn({ method: 'POST' })
+  .validator(createCredentialInputSchema)
+  .handler(async ({ data }): Promise<ProjectCredential> => {
+    const me = await user()
+    await repo.assertProjectAccess(data.projectId, me.id)
+
+    const existing = await repo.listProjectCredentials(data.projectId)
+
+    return repo.insertProjectCredential({
+      projectId: data.projectId,
+      label: data.label,
+      loginPath: normaliseLoginPath(data.loginPath),
+      username: data.username,
+      passwordEncrypted: await encryptCredential(data.password),
+      // The first account a project gets is its default whether or not the
+      // form said so, because a project with accounts and no default would
+      // leave the run engine picking one arbitrarily.
+      isDefault: data.isDefault === true || existing.length === 0,
     })
   })
 
+/**
+ * Edits a test account. A blank password keeps the stored one, which is what
+ * makes it possible to correct a label or a login path later.
+ */
+export const editCredential = createServerFn({ method: 'POST' })
+  .validator(updateCredentialInputSchema)
+  .handler(async ({ data }) => {
+    const me = await user()
+    await repo.assertCredentialAccess(data.credentialId, me.id)
+
+    await repo.updateProjectCredential(data.credentialId, {
+      label: data.label,
+      loginPath: normaliseLoginPath(data.loginPath),
+      username: data.username,
+      ...(data.password
+        ? { passwordEncrypted: await encryptCredential(data.password) }
+        : {}),
+    })
+
+    return { ok: true }
+  })
+
+export const removeCredential = createServerFn({ method: 'POST' })
+  .validator(z.object({ credentialId: idSchema }))
+  .handler(async ({ data }) => {
+    const me = await user()
+    const { credential, project } = await repo.assertCredentialAccess(
+      data.credentialId,
+      me.id,
+    )
+    await repo.deleteProjectCredential(data.credentialId)
+
+    /*
+     * Deleting the default promotes whatever is left, so a project never ends
+     * up with accounts but no default and a run signing in as nobody in
+     * particular.
+     */
+    if (credential.isDefault) {
+      const [next] = await repo.listProjectCredentials(project.id)
+      if (next) await repo.setDefaultCredential(project.id, next.id)
+    }
+
+    return { ok: true }
+  })
+
+export const makeCredentialDefault = createServerFn({ method: 'POST' })
+  .validator(z.object({ credentialId: idSchema }))
+  .handler(async ({ data }) => {
+    const me = await user()
+    const { project } = await repo.assertCredentialAccess(data.credentialId, me.id)
+    await repo.setDefaultCredential(project.id, data.credentialId)
+    return { ok: true }
+  })
+
+/**
+ * Deletes a project and everything it produced.
+ *
+ * Returns as soon as the project is invisible. Its evidence in R2 is removed by
+ * the cleanup queue, which can take a while for a project with a long history
+ * and must not hold up the request that asked for it.
+ */
 export const deleteProject = createServerFn({ method: 'POST' })
   .validator(z.object({ projectId: idSchema }))
   .handler(async ({ data }) => {
     const me = await user()
     await repo.assertProjectAccess(data.projectId, me.id)
-    await repo.deleteProject(data.projectId)
+    await requestProjectDeletion(data.projectId)
     return { ok: true }
   })
 
@@ -176,6 +310,7 @@ export type ProjectPayload = {
   project: Project
   runs: Run[]
   schedule: Schedule | null
+  credentials: ProjectCredential[]
 }
 
 export const getProject = createServerFn({ method: 'GET' })
@@ -183,11 +318,12 @@ export const getProject = createServerFn({ method: 'GET' })
   .handler(async ({ data }): Promise<ProjectPayload> => {
     const me = await user()
     const project = await repo.assertProjectAccess(data.projectId, me.id)
-    const [runs, schedule] = await Promise.all([
+    const [runs, schedule, credentials] = await Promise.all([
       repo.listRuns(project.id),
       monitor.getSchedule(project.id),
+      repo.listProjectCredentials(project.id),
     ])
-    return { project, runs, schedule }
+    return { project, runs, schedule, credentials }
   })
 
 export const updateProject = createServerFn({ method: 'POST' })

@@ -10,6 +10,10 @@ import {
   createStartHandler,
   defaultStreamHandler,
 } from '@tanstack/react-start/server'
+import {
+  handleCleanupBatch,
+  handleCleanupDeadLetter,
+} from './server/cleanup'
 import { runScheduledMonitors } from './server/monitoring/cron'
 
 export { RunSessionDO } from './server/runs/run-session-do'
@@ -30,4 +34,19 @@ const scheduled: ExportedHandlerScheduledHandler = (_controller, _env, ctx) => {
   )
 }
 
-export default { fetch, scheduled }
+/**
+ * Queue consumer.
+ *
+ * One handler serves both queues; `batch.queue` says which. The dead-letter
+ * queue gets its own path because its job is the opposite of the main one: it
+ * records a failure instead of retrying it.
+ */
+const queue: ExportedHandlerQueueHandler<Env, unknown> = async (batch) => {
+  if (batch.queue === 'forge-cleanup-dlq') {
+    handleCleanupDeadLetter(batch)
+    return
+  }
+  await handleCleanupBatch(batch)
+}
+
+export default { fetch, scheduled, queue }

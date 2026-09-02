@@ -5,12 +5,12 @@
  * dense, so the shell stays out of the way: no sidebar, no breadcrumb trail
  * deeper than the object being viewed.
  */
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@cloudflare/kumo/components/button";
+import { AccountMenu } from "#/components/app/account-menu";
 import { ThemeToggle } from "#/components/theme";
 import type { SessionUser } from "#/server/auth";
 import type { ReactNode } from "react";
-import { authClient } from "#/lib/auth-client.ts";
 
 export function ForgeMark({ size = 18 }: { size?: number }) {
   return (
@@ -77,11 +77,14 @@ export function TopBar({
   );
 }
 
+/**
+ * The account corner.
+ *
+ * A guest keeps its "Save this session" prompt, because a guest account is one
+ * cleared cookie from gone and that is worth saying in the chrome rather than
+ * only in a menu. Everything else lives behind the avatar.
+ */
 function AccountChip({ user }: { user: SessionUser }) {
-
-  const signOut = authClient.signOut;
-  const navigate = useNavigate();
-
   return (
     <div className="flex items-center gap-2">
       {user.isAnonymous ? (
@@ -90,25 +93,10 @@ function AccountChip({ user }: { user: SessionUser }) {
             Save this session
           </Button>
         </Link>
-      ) : (
-        <span className="hidden text-sm text-kumo-subtle sm:inline">
-          {user.email}
-        </span>
-      )}
-      <Button
-        variant="destructive"
-        size="sm" type="button" className="hit-44"
-        onClick={() => signOut({
-          fetchOptions: {
-            onSuccess: async () => {
-              await navigate({ to: "/" });
-            },
-          },
-        })}>
-        Sign out
-      </Button>
+      ) : null}
+      <AccountMenu user={user} />
     </div>
-  );
+  )
 }
 
 export function Page({

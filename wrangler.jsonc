@@ -8,6 +8,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "forge",
+	"account_id": "958856536d13e04221dbed6fda004ec5",
 	"compatibility_date": "2025-09-02",
 	"compatibility_flags": ["nodejs_compat"],
 	"main": "src/server.ts",
@@ -71,6 +72,34 @@
 	 * It needs a Cloudflare login (`wrangler login`, or CLOUDFLARE_API_TOKEN).
 	 */
 	"ai": { "binding": "AI", "remote": true },
+
+	/**
+	 * Project deletion.
+	 *
+	 * Deleting a project has to remove its evidence from R2 as well as its rows
+	 * from D1, which is unbounded work that must not happen inside the request
+	 * that asked for it. The row is marked deleted immediately and this queue
+	 * does the rest.
+	 *
+	 * Create them before the first deploy:
+	 *   wrangler queues create forge-cleanup
+	 *   wrangler queues create forge-cleanup-dlq
+	 */
+	"queues": {
+		"producers": [{ "binding": "CLEANUP_QUEUE", "queue": "forge-cleanup" }],
+		"consumers": [
+			{
+				"queue": "forge-cleanup",
+				"max_batch_size": 10,
+				"max_batch_timeout": 5,
+				"max_retries": 3,
+				"dead_letter_queue": "forge-cleanup-dlq"
+			},
+			// Nothing retries here: this consumer exists to record what could not
+			// be finished, so a stuck deletion is visible rather than silent.
+			{ "queue": "forge-cleanup-dlq", "max_batch_size": 10, "max_retries": 0 }
+		]
+	},
 
 	"analytics_engine_datasets": [
 		{
