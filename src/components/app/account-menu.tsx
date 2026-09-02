@@ -87,11 +87,24 @@ export function AccountMenu({ user }: { user: SessionUser }) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenu.Trigger
-          aria-label="Account"
-          className="cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--forge-accent)]"
-        >
-          <Avatar user={user} />
+        {/*
+          * The child element is the trigger.
+          *
+          * Kumo converts a single child into Base UI's `render` prop, which
+          * clones it and injects the click handlers, the ARIA state and a ref.
+          * That only works on something that spreads props onto a DOM node, so
+          * the child is a real button: passing `<Avatar>` directly renders the
+          * avatar and drops every one of those props, which is an avatar that
+          * looks right and does nothing.
+          */}
+        <DropdownMenu.Trigger>
+          <button
+            type="button"
+            aria-label="Account"
+            className="hit-44 flex cursor-pointer items-center rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--forge-accent)]"
+          >
+            <Avatar user={user} />
+          </button>
         </DropdownMenu.Trigger>
 
         <DropdownMenu.Content className="min-w-[15rem]">
