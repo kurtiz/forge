@@ -22,13 +22,77 @@ const source = (id: string) => `/api/evidence/${id}`
 export function ScreenshotCarousel({ shots }: { shots: Evidence[] }) {
   const strip = useRef<HTMLUListElement>(null)
   const [open, setOpen] = useState<number | null>(null)
+  /** Whether there is anything left to scroll to on each side. */
+  const [reach, setReach] = useState({ left: false, right: false })
 
   /** Scrolls by roughly a card, so a click always moves a whole screenshot. */
-  const scrollBy = (direction: 1 | -1) => {
+  const scrollBy = useCallback((direction: 1 | -1) => {
     const el = strip.current
     if (!el) return
     el.scrollBy({ left: direction * (el.clientWidth * 0.8), behavior: 'smooth' })
-  }
+  }, [])
+
+  const measure = useCallback(() => {
+    const el = strip.current
+    if (!el) return
+    const max = el.scrollWidth - el.clientWidth
+    // A pixel of slack: fractional layout widths leave a sub-pixel remainder
+    // at the end of the strip, which would otherwise keep the arrow lit
+    // forever on a strip that has nowhere left to go.
+    setReach({ left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 })
+  }, [])
+
+  /*
+   * A horizontal strip on a desktop mouse.
+   *
+   * `overflow-x: auto` makes the strip scrollable in principle, but a wheel
+   * only produces `deltaY`, so the filmstrip sat there refusing to move for
+   * anyone without a trackpad. Translating the vertical wheel into horizontal
+   * scroll is what makes it feel scrollable at all.
+   *
+   * The listener has to be non-passive to call `preventDefault`, which React's
+   * `onWheel` cannot be, hence the manual registration. It only claims the
+   * gesture while the strip can still move that way: at either end the event
+   * is left alone so the wheel goes on scrolling the page, rather than the
+   * strip swallowing it and trapping the reader mid-run.
+   */
+  useEffect(() => {
+    const el = strip.current
+    if (!el) return
+
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return // pinch-zoom
+      const delta =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY)
+          ? event.deltaX
+          : event.deltaY
+      if (delta === 0) return
+
+      const max = el.scrollWidth - el.clientWidth
+      if (max <= 0) return
+      const atEnd = delta > 0 ? el.scrollLeft >= max - 1 : el.scrollLeft <= 1
+      if (atEnd) return
+
+      event.preventDefault()
+      el.scrollLeft += delta
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  /* Arrow state follows the strip, the viewport, and the images as they load. */
+  useEffect(() => {
+    const el = strip.current
+    if (!el) return
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    for (const child of Array.from(el.children)) observer.observe(child)
+
+    return () => observer.disconnect()
+  }, [measure, shots.length])
 
   if (shots.length === 0) return null
 
@@ -36,17 +100,29 @@ export function ScreenshotCarousel({ shots }: { shots: Evidence[] }) {
     <div className="relative">
       {shots.length > 1 ? (
         <>
-          <StripButton side="left" onClick={() => scrollBy(-1)} />
-          <StripButton side="right" onClick={() => scrollBy(1)} />
+          <StripButton
+            side="left"
+            disabled={!reach.left}
+            onClick={() => scrollBy(-1)}
+          />
+          <StripButton
+            side="right"
+            disabled={!reach.right}
+            onClick={() => scrollBy(1)}
+          />
         </>
       ) : null}
 
       <ul
         ref={strip}
-        className="scrollbar-thin m-0 flex list-none gap-3 overflow-x-auto p-0 pb-2"
+        onScroll={measure}
+        // `snap-x` lands a card against the edge rather than half of one, and
+        // `overscroll-x-contain` stops a flick at the end of the strip from
+        // turning into a browser back-swipe.
+        className="scrollbar-thin m-0 flex snap-x snap-mandatory list-none gap-3 overflow-x-auto overscroll-x-contain p-0 pb-2"
       >
         {shots.map((shot, index) => (
-          <li key={shot.id} className="w-[15rem] shrink-0 sm:w-[19rem]">
+          <li key={shot.id} className="w-[15rem] shrink-0 snap-start sm:w-[19rem]">
             <button
               type="button"
               onClick={() => setOpen(index)}
@@ -78,21 +154,33 @@ export function ScreenshotCarousel({ shots }: { shots: Evidence[] }) {
   )
 }
 
+/**
+ * A strip arrow.
+ *
+ * Kept mounted and disabled at the ends rather than unmounted: a control that
+ * appears and disappears under the cursor makes the strip feel like it is
+ * moving on its own.
+ */
 function StripButton({
   side,
+  disabled,
   onClick,
 }: {
   side: 'left' | 'right'
+  disabled: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
       aria-label={side === 'left' ? 'Scroll left' : 'Scroll right'}
+      disabled={disabled}
       onClick={onClick}
-      className={`absolute top-[35%] z-10 hidden size-8 cursor-pointer items-center justify-center rounded-full border border-kumo-hairline bg-kumo-base text-kumo-strong shadow-sm hover:bg-kumo-tint sm:flex ${
-        side === 'left' ? '-left-3' : '-right-3'
-      }`}
+      className={`absolute top-[35%] z-10 hidden size-8 items-center justify-center rounded-full border border-kumo-hairline bg-kumo-base text-kumo-strong shadow-sm transition-opacity sm:flex ${
+        disabled
+          ? 'cursor-default opacity-0'
+          : 'cursor-pointer opacity-100 hover:bg-kumo-tint'
+      } ${side === 'left' ? '-left-3' : '-right-3'}`}
     >
       {side === 'left' ? <CaretLeftIcon size={14} /> : <CaretRightIcon size={14} />}
     </button>

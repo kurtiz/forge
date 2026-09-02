@@ -7,7 +7,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
-import { ArrowSquareOutIcon, FilmSlateIcon, StopCircleIcon } from "@phosphor-icons/react";
+import {
+  ArrowDownIcon,
+  ArrowSquareOutIcon,
+  FilmSlateIcon,
+  PauseIcon,
+  StopCircleIcon,
+} from "@phosphor-icons/react";
 import { Button } from "@cloudflare/kumo/components/button";
 import { Page, PageHeader, Section, TopBar } from "#/components/app/shell";
 import {
@@ -355,6 +361,9 @@ const EVENT_TONE: Record<string, string> = {
   "run.canceled": "var(--forge-warn)",
 };
 
+/** How close to the bottom still counts as "at the tail". */
+const TAIL_SLACK = 96;
+
 function Timeline({
                     events,
                     live,
@@ -370,19 +379,76 @@ function Timeline({
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // Follow the tail, but only while the reader is already at it.
+  /*
+   * Following is a mode the reader owns, not a guess made per event.
+   *
+   * It starts on, and scrolling up turns it off - reading an event from two
+   * minutes ago while the tail keeps yanking the view down is the one thing a
+   * live log must not do. Scrolling back to the bottom turns it on again,
+   * because arriving at the tail is how people ask to stay there. The buttons
+   * say which state it is in, so the reader never has to work it out from
+   * whether the log happens to be moving.
+   */
+  const [following, setFollowing] = useState(true);
+  /** Events that landed while following was off, for the resume button. */
+  const [behind, setBehind] = useState(0);
+  const seen = useRef(events.length);
+
+  /*
+   * Distinguishes the reader's scroll from the one this component just made.
+   * Without it, writing `scrollTop` fires `onScroll`, which would be read as
+   * an interruption and switch following off on the first event.
+   */
+  const selfScrolling = useRef(false);
+
+  const scrollToTail = useCallback(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    // Against the clamped target, not `scrollHeight`: if the box is already
+    // there the assignment fires no event, and a flag set for an event that
+    // never arrives would swallow the reader's next real scroll.
+    const target = box.scrollHeight - box.clientHeight;
+    if (box.scrollTop === target) return;
+    selfScrolling.current = true;
+    box.scrollTop = target;
+  }, []);
+
+  const jumpToTail = useCallback(() => {
+    scrollToTail();
+    setFollowing(true);
+    setBehind(0);
+  }, [scrollToTail]);
+
+  const onScroll = useCallback(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    if (selfScrolling.current) {
+      selfScrolling.current = false;
+      return;
+    }
+    const tail =
+      box.scrollHeight - box.scrollTop - box.clientHeight <= TAIL_SLACK;
+    setFollowing(tail);
+    if (tail) setBehind(0);
+  }, []);
+
+  // Follow the tail while following is on, and only while events are still
+  // arriving: a finished run opens at the top of its trace, where a reader
+  // starts, rather than at an end nothing is about to add to.
+  //
   // `scrollIntoView` walks up and scrolls whichever ancestor it has to,
   // including the document, so a streaming run was pulling the findings above
   // out of view on every event. Scrolling the container directly keeps the
-  // rest of the page still. The threshold absorbs the row that just landed.
+  // rest of the page still.
   useEffect(() => {
     if (!live) return;
-    const box = boxRef.current;
-    if (!box) return;
-    const fromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
-    if (fromBottom > 96) return;
-    box.scrollTop = box.scrollHeight;
-  }, [events.length, live]);
+
+    const arrived = events.length - seen.current;
+    seen.current = events.length;
+
+    if (following) scrollToTail();
+    else if (arrived > 0) setBehind((n) => n + arrived);
+  }, [events.length, following, live, scrollToTail]);
 
   if (events.length === 0) {
     return (
@@ -393,29 +459,110 @@ function Timeline({
   }
 
   return (
-    <div ref={boxRef} className="max-h-[26rem] overflow-y-auto pr-1">
-      <ol className="m-0 list-none p-0">
-        {events.map((event) => (
-          <li key={event.id} className="rail relative flex gap-3 py-1.5 pl-5">
-            <span
-              aria-hidden
-              className="absolute left-1 top-[0.5rem] size-1.5 rounded-full"
-              style={{ background: EVENT_TONE[event.type] ?? "var(--forge-idle)" }}
-            />
-            <time
-              dateTime={event.createdAt}
-              className="tabular shrink-0 font-mono text-[11px] text-kumo-subtle"
-            >
-              {new Date(event.createdAt).toLocaleTimeString(undefined, {
-                hour12: false,
-              })}
-            </time>
-            <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-kumo-strong">
-              {event.message}
-            </span>
-          </li>
-        ))}
-      </ol>
+    <div className="relative">
+      <div
+        ref={boxRef}
+        onScroll={onScroll}
+        tabIndex={0}
+        role="log"
+        aria-label="Agent trace"
+        aria-live={live && following ? "polite" : "off"}
+        /*
+         * A recessed surface with its own edge. The trace is the one block on
+         * this page that scrolls inside itself, and on the flat page it read
+         * as more of the same list - people scrolled the window past it
+         * looking for the end. The panel is the affordance.
+         */
+        // The extra bottom padding while live is the room the floating control
+        // sits in: without it the pill covers the newest event, which is the
+        // one line a reader watching a live run is actually there for.
+        className={`scrollbar-thin max-h-[26rem] overflow-y-auto overscroll-contain rounded-lg border border-kumo-hairline bg-kumo-recessed px-3 pt-2 ${
+          live ? "pb-10" : "pb-2"
+        }`}
+      >
+        <ol className="m-0 list-none p-0">
+          {events.map((event) => (
+            <li key={event.id} className="rail relative flex gap-3 py-1.5 pl-5">
+              <span
+                aria-hidden
+                className="absolute left-1 top-[0.5rem] size-1.5 rounded-full"
+                style={{ background: EVENT_TONE[event.type] ?? "var(--forge-idle)" }}
+              />
+              <time
+                dateTime={event.createdAt}
+                className="tabular shrink-0 font-mono text-[11px] text-kumo-subtle"
+              >
+                {new Date(event.createdAt).toLocaleTimeString(undefined, {
+                  hour12: false,
+                })}
+              </time>
+              <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-kumo-strong">
+                {event.message}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <TraceControls
+        live={live}
+        following={following}
+        behind={behind}
+        onFollow={jumpToTail}
+        onPause={() => setFollowing(false)}
+      />
+    </div>
+  );
+}
+
+/**
+ * The trace's scroll controls.
+ *
+ * Over the panel rather than above it: they belong to the scroll area, and the
+ * section header already carries the live indicator. Only ever one primary
+ * action - resume, or pause - so there is nothing to choose between.
+ */
+function TraceControls({
+                         live,
+                         following,
+                         behind,
+                         onFollow,
+                         onPause,
+                       }: {
+  live: boolean
+  following: boolean
+  behind: number
+  onFollow: () => void
+  onPause: () => void
+}) {
+  // A finished trace has no tail to follow, so it gets no control: it is a
+  // static block of text and the window scrollbar is the whole story.
+  if (!live) return null;
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
+      {following ? (
+        <button
+          type="button"
+          onClick={onPause}
+          className="pointer-events-auto flex cursor-pointer items-center gap-1.5 rounded-full border border-kumo-hairline bg-kumo-base/90 px-3 py-1 text-xs text-kumo-subtle shadow-sm backdrop-blur hover:text-kumo-strong"
+        >
+          <PauseIcon size={12} />
+          Pause scrolling
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onFollow}
+          className="pointer-events-auto flex cursor-pointer items-center gap-1.5 rounded-full border border-kumo-hairline bg-kumo-base/90 px-3 py-1 text-xs text-kumo-strong shadow-sm backdrop-blur hover:bg-kumo-tint"
+        >
+          <ArrowDownIcon size={12} />
+          {behind > 0
+            ? `${behind} new event${behind === 1 ? "" : "s"}`
+            : "Jump to latest"}
+          <span className="text-kumo-subtle">· resume</span>
+        </button>
+      )}
     </div>
   );
 }

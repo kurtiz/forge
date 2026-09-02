@@ -8,7 +8,10 @@
  *
  * Authentication is a bearer token (`Authorization: Bearer forge_...`), resolved
  * by `currentUser` to exactly the same `SessionUser` the console cookie yields,
- * so every ownership check below is the one the console already uses.
+ * so every ownership check below is the one the console already uses. A cookie
+ * is accepted too - `currentUser` does not care which door - so nothing here
+ * may infer that a caller is the CLI from the fact that it is talking to this
+ * module. Anything recording provenance asks `domain/provenance`.
  */
 import { z } from 'zod'
 import {
@@ -17,6 +20,7 @@ import {
   type RunReport,
 } from '../contracts'
 import { currentUser } from '../auth'
+import { apiRunTrigger, usedApiToken } from '../domain/provenance'
 import { env } from 'cloudflare:workers'
 import {
   assertSafeTargetUrl,
@@ -57,7 +61,14 @@ export function errorResponse(error: unknown): Response {
   return apiError(message, 400)
 }
 
-export type ApiUser = { id: string }
+export type ApiUser = {
+  id: string
+  /**
+   * True when a bearer token was presented, which means the caller is outside
+   * the browser. False means the console's own session cookie.
+   */
+  viaToken: boolean
+}
 
 /** Resolves the caller, or returns the 401 to send back. */
 export async function authenticate(
@@ -70,7 +81,7 @@ export async function authenticate(
       401,
     )
   }
-  return { id: user.id }
+  return { id: user.id, viaToken: usedApiToken(request.headers) }
 }
 
 function consoleUrl(path: string): string {
@@ -110,7 +121,13 @@ export async function createRunHandler(request: Request): Promise<Response> {
   const run = await startRun({
     userId: user.id,
     projectId: project.id,
-    trigger: 'cli',
+    /*
+     * Provenance comes from the credential, not from the route. This endpoint
+     * accepts the console's session cookie as well as a bearer token, so
+     * hardcoding `cli` here tagged browser-started runs "CLI" in a history
+     * whose whole job is telling a hand-started run from an automated one.
+     */
+    trigger: apiRunTrigger(request.headers),
     idempotencyKey: input.idempotencyKey ?? null,
   })
 
