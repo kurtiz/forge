@@ -154,19 +154,12 @@ function SignIn() {
                 you cannot sign back into it once this browser forgets the session.
               </p>
 
-              {session.providers.github ? (
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  className="mb-8 w-full"
-                  loading={busy === 'github'}
-                  disabled={busy !== null}
-                  onClick={continueWithGitHub}
-                  icon={<GithubLogoIcon size={16} />}
-                >
-                  Continue with GitHub
-                </Button>
-              ) : null}
+              <GitHubButton
+                available={session.providers.github}
+                development={session.development}
+                busy={busy}
+                onClick={continueWithGitHub}
+              />
 
               <div className="mb-6 flex items-center gap-3">
                 <span className="h-px flex-1 bg-kumo-hairline" />
@@ -274,6 +267,52 @@ function SignIn() {
           ) : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * GitHub sign-in.
+ *
+ * Hidden in production when the deployment has no OAuth credentials, because a
+ * button that dead-ends on a provider error page is worse than no button. Shown
+ * disabled in development instead, naming the two variables that switch it on:
+ * a feature that silently does not exist is the hardest kind to configure.
+ */
+function GitHubButton({
+  available,
+  development,
+  busy,
+  onClick,
+}: {
+  available: boolean
+  development: boolean
+  busy: string | null
+  onClick: () => void
+}) {
+  if (!available && !development) return null
+
+  return (
+    <div className="mb-8">
+      <Button
+        variant="secondary"
+        size="lg"
+        className="w-full"
+        loading={busy === 'github'}
+        disabled={!available || busy !== null}
+        onClick={onClick}
+        icon={<GithubLogoIcon size={16} />}
+      >
+        Continue with GitHub
+      </Button>
+      {!available ? (
+        <p className="m-0 mt-2.5 text-xs text-kumo-subtle">
+          Set <code className="font-mono">GITHUB_CLIENT_ID</code> and{' '}
+          <code className="font-mono">GITHUB_CLIENT_SECRET</code> to enable this.
+          The GitHub app's callback URL is{' '}
+          <code className="font-mono">/api/auth/callback/github</code>.
+        </p>
+      ) : null}
     </div>
   )
 }

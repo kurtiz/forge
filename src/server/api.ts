@@ -8,6 +8,7 @@
  */
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
+import { env } from 'cloudflare:workers'
 import { z } from 'zod'
 import {
   createApiTokenInputSchema,
@@ -60,6 +61,12 @@ export type SessionPayload = {
   executor: 'solari' | 'fetch'
   /** Sign-in methods this deployment can actually complete. */
   providers: { github: boolean }
+  /**
+   * Whether this is a development deployment. Used only to explain a feature
+   * that is switched off for want of configuration, which is a thing worth
+   * saying to whoever is building the deployment and nobody else.
+   */
+  development: boolean
 }
 
 export const getSession = createServerFn({ method: 'GET' }).handler(
@@ -67,6 +74,7 @@ export const getSession = createServerFn({ method: 'GET' }).handler(
     user: await currentUser(getRequest()),
     executor: plannedExecutorKind(),
     providers: { github: githubLoginAvailable() },
+    development: env.FORGE_ENV === 'development',
   }),
 )
 

@@ -370,7 +370,11 @@ retried request cannot create a second paid session.
 user row, so every authorization check behaves identically for guests. Signing
 up later migrates their projects across rather than stranding them.
 
-**Three ways to sign in, one user.** Email and password, GitHub, and guest all
+**Three ways to sign in, one user.** GitHub sign-in needs an OAuth app whose
+callback URL is `<APP_URL>/api/auth/callback/github`, and its client id and
+secret in `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. Until both are set the
+button is hidden in production and shown disabled, with that note, in
+development. Email and password, GitHub, and guest all
 produce the same user row. GitHub is offered only when both halves of its OAuth
 credential are configured, because a button that dead-ends on a provider error
 page is worse than no button. Account linking is enabled for GitHub alone: it
