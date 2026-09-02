@@ -11,6 +11,7 @@ import type {
   FailureClass,
   JourneyStatus,
   RunStatus,
+  RunTrigger,
   Severity,
 } from '#/server/contracts'
 
@@ -163,6 +164,42 @@ export function ClassificationPill({
         ? 'warn'
         : 'idle'
   return <Pill tone={tone}>{CLASSIFICATION_LABEL[classification]}</Pill>
+}
+
+/**
+ * Why a run exists.
+ *
+ * A manual run needs no explanation, so it gets no tag. The others do: a
+ * reader scanning a project's history has to be able to tell a nightly monitor
+ * from a pull request check from a fix verification without opening any of
+ * them.
+ */
+const TRIGGER_LABEL: Record<Exclude<RunTrigger, 'manual'>, string> = {
+  verify_fix: 'Fix check',
+  scheduled: 'Scheduled',
+  pull_request: 'Pull request',
+  cli: 'CLI',
+}
+
+export function TriggerTag({
+  trigger,
+  pullRequestNumber,
+}: {
+  trigger: RunTrigger
+  pullRequestNumber?: number | null
+}) {
+  if (trigger === 'manual') return null
+
+  const label =
+    trigger === 'pull_request' && pullRequestNumber
+      ? `PR #${pullRequestNumber}`
+      : TRIGGER_LABEL[trigger]
+
+  return (
+    <span className="rounded border border-kumo-hairline px-1.5 py-0.5 text-[11px] whitespace-nowrap text-kumo-subtle">
+      {label}
+    </span>
+  )
 }
 
 export { RUN_LABEL }

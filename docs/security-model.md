@@ -4,7 +4,9 @@
 
 Forge points a browser at a URL a stranger supplied, executes a repository a
 stranger supplied, and feeds both into a model. That produces four real threats,
-and each one is handled outside the model.
+and each one is handled outside the model. Opening the product to a CLI and to
+GitHub adds a fifth: two new ways to reach it that do not carry a session
+cookie.
 
 ## 1. Server-side request forgery
 
@@ -87,11 +89,60 @@ Limits are architecture, not an optimisation:
 | Wall clock per run | 15 minutes |
 | Reproduction attempts per finding | 3 |
 | Evidence per run | 24 MB |
+| Tokens per account | 20 |
+| Schedules started per cron tick | 10 |
+| Minimum monitoring cadence | 30 minutes |
 
 `Budget` is checked before the work, not after. Sessions are released in a
 `finally` covering success, failure, and cancellation. Expensive operations
 accept an idempotency key so a retried request cannot create a second paid
 session.
+
+## 5. Credentials that are not a browser session
+
+Two non-cookie doors exist, and each has one thing standing behind it.
+
+### API tokens
+
+A token is `forge_` plus 40 characters from a 32-symbol alphabet: 200 bits of
+entropy. Only its SHA-256 is stored, so a database read yields nothing usable,
+and there is no per-token salt because the input space cannot be enumerated. The
+console shows the token exactly once, at creation.
+
+`currentUser` accepts a bearer token wherever it accepts a cookie, and resolves
+both to the same `SessionUser`, so every ownership check downstream is
+identical. A malformed bearer token is a definite rejection rather than a
+fall-through to cookie authentication: a bad token must not be silently ignored
+in favour of an ambient session.
+
+Guests cannot hold tokens. An anonymous account is deleted along with anything
+depending on it, which would turn a token into a trap.
+
+The REST API returns 404 for both "not found" and "not yours", the same way the
+evidence route does, so a token cannot be used to probe for valid ids.
+
+### GitHub webhooks
+
+The webhook endpoint is public and unauthenticated, so its HMAC is the entire
+boundary. `X-Hub-Signature-256` is verified against the raw body, before the
+body is parsed, with a constant-time comparison. A missing secret fails closed.
+
+Three further rules bound what a valid delivery can cause:
+
+**An unclaimed installation does nothing.** A webhook names a GitHub account,
+never a Forge one. The link is made by a signed-in user completing the setup
+redirect, so a delivery for an installation nobody has claimed is a no-op rather
+than a run on a guessed account.
+
+**Preview URLs are targets, not trusted input.** `environment_url` comes from a
+public endpoint and is user-controlled, so it goes through the same
+`assertSafeTargetUrl` policy as anything typed into the console. So does a
+monitoring notification webhook, for the same reason: the Worker is the one
+making the request.
+
+**One commit, one run.** Every run started from GitHub carries an idempotency
+key derived from the commit, so the several events describing one deployment
+cannot multiply into several billable sessions.
 
 ## Credentials
 

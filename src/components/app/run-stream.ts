@@ -30,6 +30,7 @@ export function useRunStream({
   onFinished: () => void
 }) {
   const [events, setEvents] = useState<RunEvent[]>(initialEvents)
+  const [currentStatus, setCurrentStatus] = useState<RunStatus>(status)
   const [live, setLive] = useState(LIVE_STATUSES.includes(status))
   const finished = useRef(false)
 
@@ -54,6 +55,13 @@ export function useRunStream({
             ? current
             : [...current, event].sort((a, b) => a.sequence - b.sequence),
         )
+        if (event.type === 'phase.changed') {
+          const target = (event.data as Record<string, unknown>)
+            .status as RunStatus | undefined
+          if (target && LIVE_STATUSES.includes(target)) {
+            setCurrentStatus(target)
+          }
+        }
         if (event.type === 'run.completed' || event.type === 'run.failed') {
           finish()
         }
@@ -84,5 +92,5 @@ export function useRunStream({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, status])
 
-  return { events, live }
+  return { events, live, currentStatus }
 }

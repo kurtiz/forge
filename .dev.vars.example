@@ -35,6 +35,18 @@ APP_URL="http://localhost:3000"
 # AI_GATEWAY_KEY="sk-..."
 # AI_GATEWAY_MODEL="gpt-4o-mini"
 
+# Optional. GitHub App credentials, for verifying pull requests and posting the
+# result as a check. All three are needed together; without them the webhook
+# endpoint refuses every delivery and the console says the integration is off.
+# The private key must be PKCS#8: GitHub issues PKCS#1, so convert it once with
+#   openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in key.pem -out key.pkcs8.pem
+# and paste it as a single line with \n between the lines.
+# GITHUB_APP_ID="123456"
+# GITHUB_APP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
+# GITHUB_WEBHOOK_SECRET="a-long-random-string"
+# The app's URL slug, so the console can link to its install page.
+# GITHUB_APP_SLUG="forge-verification"
+
 # Repairs the seeded defects in the bundled demo app. Flip this to "1" to make
 # "Verify fix" pass on a finding you already have.
 # FORGE_DEMO_FIXED="1"

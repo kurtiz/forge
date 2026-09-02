@@ -12,6 +12,8 @@ import { anonymous } from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
 import { env } from 'cloudflare:workers'
 import { db, schema, tables } from './db'
+import { resolveToken } from './tokens/repository'
+import { bearerToken, isTokenShaped } from './tokens/token'
 
 function createAuth() {
   const secret = env.BETTER_AUTH_SECRET
@@ -86,8 +88,22 @@ export type SessionUser = {
   isAnonymous: boolean
 }
 
-/** Resolves the caller from request cookies, or null when signed out. */
+/**
+ * Resolves the caller, or null when signed out.
+ *
+ * Two credentials are accepted: the Better Auth session cookie the console
+ * uses, and a bearer API token the CLI and CI use. Both land on the same
+ * `SessionUser`, so every ownership check downstream is identical whichever
+ * door was used. A malformed bearer token is a definite "no" rather than a
+ * fall-through to cookies, so a bad token cannot be quietly ignored.
+ */
 export async function currentUser(request: Request): Promise<SessionUser | null> {
+  const token = bearerToken(request.headers)
+  if (token !== null) {
+    if (!isTokenShaped(token)) return null
+    return resolveToken(token)
+  }
+
   const session = await auth().api.getSession({ headers: request.headers })
   if (!session?.user) return null
 

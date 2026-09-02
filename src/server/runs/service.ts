@@ -22,21 +22,36 @@ export async function startRun(input: {
   trigger: Run['trigger']
   verifiesFindingId?: string | null
   idempotencyKey?: string | null
+  /**
+   * Verify somewhere other than the project's configured target: a pull
+   * request's preview deployment. Validated like any other target.
+   */
+  targetUrl?: string | null
+  github?: {
+    commitSha: string
+    pullRequestNumber: number | null
+    installationId: string
+  } | null
 }): Promise<Run> {
   const project = await repo.assertProjectAccess(input.projectId, input.userId)
 
   // Re-validated at run time as well as at project creation, because the stored
   // value could have been written before a rule changed.
-  assertSafeTargetUrl(project.targetUrl)
+  const targetUrl = assertSafeTargetUrl(
+    input.targetUrl ?? project.targetUrl,
+  ).toString()
 
   const run = await repo.createRun({
     projectId: project.id,
-    targetUrl: project.targetUrl,
+    targetUrl,
     repoUrl: project.repoUrl,
     executor: plannedExecutorKind(),
     trigger: input.trigger,
     verifiesFindingId: input.verifiesFindingId ?? null,
     idempotencyKey: input.idempotencyKey ?? null,
+    commitSha: input.github?.commitSha ?? null,
+    pullRequestNumber: input.github?.pullRequestNumber ?? null,
+    githubInstallationId: input.github?.installationId ?? null,
   })
 
   // An idempotent replay returns the existing run without starting it twice.
@@ -56,7 +71,7 @@ export async function startRun(input: {
     body: JSON.stringify({
       runId: run.id,
       projectId: project.id,
-      targetUrl: project.targetUrl,
+      targetUrl,
       repoUrl: project.repoUrl,
       goal: project.goal,
       verifiesFindingId: input.verifiesFindingId ?? null,

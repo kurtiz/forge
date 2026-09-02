@@ -174,11 +174,17 @@ and a session replay link on the finding.
 ## Development
 
 ```bash
-pnpm typecheck     # tsc --noEmit
+pnpm typecheck     # tsc --noEmit, for the Worker and the CLI
 pnpm test          # unit tests
 pnpm build         # client + worker bundles
+pnpm build:cli     # the CLI, into cli/dist
 pnpm check         # all three
 ```
+
+The CLI is a separate package under `cli/`, compiled by its own tsconfig
+against Node libraries rather than the Worker's. It talks to the REST API in
+`src/server/rest/`, never to the server functions, so it keeps working against
+a Forge that is a version or two ahead.
 
 ### Changing the schema
 
@@ -210,9 +216,14 @@ src/
     agent/                Explorer, Operator, Judge, prompts, model router
     evidence/             R2 artifact store and metadata
     runs/                 repository, run service, engine, RunSessionDO
+    github/               App auth, webhooks, checks, preview URLs
+    monitoring/           schedules, cadence arithmetic, the cron tick
+    tokens/               API token format, hashing, storage
+    rest/                 the public REST API the CLI and CI talk to
     demo/                 the deliberately broken fixture application
-    auth.ts               Better Auth (email/password + anonymous)
+    auth.ts               Better Auth (email/password, anonymous, API tokens)
     api.ts                typed server functions the UI calls
+cli/                      @forge/cli, a separate zero-dependency package
 infrastructure/migrations/
 tests/unit/
 ```
@@ -229,12 +240,100 @@ wrangler secret put BETTER_AUTH_SECRET
 wrangler secret put SOLARI_API_KEY        # optional
 wrangler secret put FORGE_CREDENTIAL_KEY  # optional; needed to store app logins
 
+# Optional; all three together enable pull request verification
+wrangler secret put GITHUB_APP_ID
+wrangler secret put GITHUB_APP_PRIVATE_KEY
+wrangler secret put GITHUB_WEBHOOK_SECRET
+
 pnpm db:migrate:remote
 pnpm deploy
 ```
 
 Keep development, staging, and production on separate D1 databases, R2 buckets,
 and Solari keys. A development run must never be able to reach production data.
+
+---
+
+## Beyond the console
+
+The verification loop is the same in all three of these. Only the trigger, and
+where the result is delivered, changes.
+
+### CLI
+
+```bash
+npm install -g @forge/cli
+
+forge login
+forge verify --url https://preview.example.com --repo https://github.com/acme/app
+```
+
+```text
+Forge verification
+
+✓ Application reachable
+✓ Browser session
+✓ 7 journeys discovered
+✓ 6 journeys passed
+✗ 1 journey failed
+
+Finding
+  critical  Applying a coupon at checkout returns 500
+    reproduced 3/3 times
+
+View:
+https://forge.dev/runs/run_123
+```
+
+`forge verify` exits 1 when Forge confirms a defect and 0 otherwise, so it is a
+CI gate as it stands. A flaky or environmental failure is printed but does not
+fail the command, because blocking a merge on a rate limit teaches people to
+skip the check.
+
+Tokens are issued in the console under **Settings**, stored as a SHA-256 hash,
+and shown exactly once. `FORGE_TOKEN` overrides the stored credential, which is
+what CI should use. The CLI has no dependencies: it is Node's own fetch and
+about six hundred lines, because a verification tool installed on every
+developer machine and CI runner should not bring a package tree with it.
+
+### GitHub
+
+```text
+pull request opened or updated
+        ↓
+preview deployment              ← reported by the host, or derived from a
+        ↓                         URL pattern on the project
+Forge verification run
+        ↓
+check on the head commit
+```
+
+Install the app, link it from **Settings**, and add the repository to a project.
+Most hosts announce preview deployments to GitHub and nothing else is needed;
+for those that do not, a project can carry a pattern such as
+`https://pr-{number}.example.pages.dev`.
+
+Three rules bound what a webhook can cause:
+
+- An installation nobody has claimed in the console does nothing at all. A
+  webhook names a GitHub account, never a Forge one.
+- A preview URL from a delivery goes through exactly the same SSRF policy as a
+  URL typed into the console.
+- Every run started from GitHub carries an idempotency key derived from the
+  commit, so the several events describing one deployment produce one billable
+  run.
+
+A confirmed defect fails the check. Everything else is reported as neutral.
+
+### Scheduled monitoring
+
+A project can re-verify itself on a cadence between every 30 minutes and daily.
+One cron trigger fires every fifteen minutes and starts only the runs that are
+actually due, so every cadence shares one trigger.
+
+Notifications go to a webhook on the transitions that matter: the first
+failure, the recovery, and every fourth consecutive failure after that. Steady
+green says nothing, and a week-long outage does not produce a week of alerts.
 
 ---
 
@@ -300,11 +399,15 @@ Shipped:
   sign-in before discovery, and auth-wall detection so an application Forge
   cannot get into is reported as such instead of as a pile of defects
 
+- GitHub App: a pull request's preview deployment is verified and the result
+  posted as a check on the commit
+- A CLI, `forge verify`, with an exit code CI can gate on
+- Scheduled monitoring: the same engine on a timer, with notifications on the
+  transitions rather than on every tick
+
 Next, roughly in order:
 
 - An evaluation harness over the seeded fixtures, with false-positive rate as a
   first-class metric
-- GitHub App integration: pull request to verification to check
-- A CLI, then scheduled regression monitoring
 - Proposed patches, applied in a disposable sandbox and verified before a PR is
   ever opened

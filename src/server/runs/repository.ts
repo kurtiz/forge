@@ -67,6 +67,7 @@ const toProject = (r: ProjectRow): Project => ({
   authLoginPath: r.authLoginPath,
   authUsername: r.authUsername,
   hasCredentials: Boolean(r.authPasswordEncrypted),
+  previewUrlTemplate: r.previewUrlTemplate,
   createdAt: r.createdAt,
   updatedAt: r.updatedAt,
 })
@@ -134,6 +135,60 @@ export async function saveProjectProfileId(
     .where(eq(tables.projects.id, projectId))
 }
 
+/**
+ * The project a user already has for a target, if any. Used by the REST API so
+ * `forge verify --url X` twice does not create two projects for one site.
+ */
+export async function findProjectByTarget(
+  userId: string,
+  targetUrl: string,
+): Promise<Project | null> {
+  const [row] = await db()
+    .select()
+    .from(tables.projects)
+    .where(
+      and(
+        eq(tables.projects.userId, userId),
+        eq(tables.projects.targetUrl, targetUrl),
+      ),
+    )
+    .orderBy(desc(tables.projects.createdAt))
+    .limit(1)
+
+  return row ? toProject(row) : null
+}
+
+/**
+ * Projects owned by `userId` that point at a GitHub repository. Matched by the
+ * normalised URL, case-insensitively, since GitHub names are.
+ */
+export async function listProjectsForRepo(
+  userId: string,
+  repoFullName: string,
+): Promise<Project[]> {
+  const rows = await db()
+    .select()
+    .from(tables.projects)
+    .where(
+      and(
+        eq(tables.projects.userId, userId),
+        sql`lower(${tables.projects.repoUrl}) = ${`https://github.com/${repoFullName.toLowerCase()}`}`,
+      ),
+    )
+
+  return rows.map(toProject)
+}
+
+export async function updateProject(
+  projectId: string,
+  patch: Partial<{ previewUrlTemplate: string | null }>,
+): Promise<void> {
+  await db()
+    .update(tables.projects)
+    .set({ ...patch, updatedAt: nowIso() })
+    .where(eq(tables.projects.id, projectId))
+}
+
 export async function listProjects(userId: string): Promise<Project[]> {
   const rows = await db()
     .select()
@@ -177,11 +232,19 @@ const toRun = (r: RunRow): Run => ({
   sessionId: r.sessionId,
   replayUrl: r.replayUrl,
   verifiesFindingId: r.verifiesFindingId,
+  commitSha: r.commitSha,
+  pullRequestNumber: r.pullRequestNumber,
   summary: r.summary,
   startedAt: r.startedAt,
   completedAt: r.completedAt,
   createdAt: r.createdAt,
 })
+
+/** The GitHub columns, read only by the check publisher. */
+export type RunGitHubRow = Pick<
+  RunRow,
+  'commitSha' | 'pullRequestNumber' | 'githubInstallationId' | 'checkRunId'
+>
 
 export async function createRun(input: {
   projectId: string
@@ -191,6 +254,9 @@ export async function createRun(input: {
   trigger: Run['trigger']
   verifiesFindingId: string | null
   idempotencyKey: string | null
+  commitSha?: string | null
+  pullRequestNumber?: number | null
+  githubInstallationId?: string | null
 }): Promise<Run> {
   if (input.idempotencyKey) {
     const [existing] = await db()
@@ -229,6 +295,43 @@ export async function getRun(runId: string): Promise<Run | null> {
     .limit(1)
 
   return row ? toRun(row) : null
+}
+
+/** Whether a run already has a GitHub check open against it. */
+export async function runCheckRunId(runId: string): Promise<string | null> {
+  const [row] = await db()
+    .select({ checkRunId: tables.runs.checkRunId })
+    .from(tables.runs)
+    .where(eq(tables.runs.id, runId))
+    .limit(1)
+
+  return row?.checkRunId ?? null
+}
+
+/** A run with its project and the GitHub columns, for post-run publishing. */
+export async function getRunForCompletion(runId: string): Promise<{
+  run: Run
+  project: Project
+  github: RunGitHubRow
+} | null> {
+  const [row] = await db()
+    .select({ run: tables.runs, project: tables.projects })
+    .from(tables.runs)
+    .innerJoin(tables.projects, eq(tables.projects.id, tables.runs.projectId))
+    .where(eq(tables.runs.id, runId))
+    .limit(1)
+
+  if (!row) return null
+  return {
+    run: toRun(row.run),
+    project: toProject(row.project),
+    github: {
+      commitSha: row.run.commitSha,
+      pullRequestNumber: row.run.pullRequestNumber,
+      githubInstallationId: row.run.githubInstallationId,
+      checkRunId: row.run.checkRunId,
+    },
+  }
 }
 
 export async function assertRunAccess(
@@ -283,6 +386,7 @@ export async function updateRun(
     error: string | null
     startedAt: string | null
     completedAt: string | null
+    checkRunId: string | null
   }>,
 ): Promise<void> {
   if (Object.keys(patch).length === 0) return

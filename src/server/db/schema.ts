@@ -39,6 +39,7 @@ import type {
   JourneyStatus,
   Run,
   RunStatus,
+  ScheduleOutcome,
   Severity,
 } from '../contracts'
 
@@ -155,12 +156,63 @@ export const projects = sqliteTable(
     authPasswordEncrypted: text('auth_password_encrypted'),
     /** Solari browser profile holding the signed-in state between runs. */
     authProfileId: text('auth_profile_id'),
+    /**
+     * Preview URL pattern for pull requests, e.g.
+     * `https://pr-{number}.example.pages.dev`. Null: wait for a deployment.
+     */
+    previewUrlTemplate: text('preview_url_template'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
     index('projects_user_idx').on(table.userId, table.createdAt),
   ],
+)
+
+/* ------------------------------------------------------------- API tokens */
+
+/**
+ * Personal access tokens for the CLI and CI. The token is shown once and only
+ * its SHA-256 lands here, so a database read cannot recover a usable secret.
+ */
+export const apiTokens = sqliteTable(
+  'api_tokens',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    /** First characters of the token, so a user can tell tokens apart. */
+    prefix: text('prefix').notNull(),
+    lastUsedAt: text('last_used_at'),
+    revokedAt: text('revoked_at'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [index('api_tokens_user_idx').on(table.userId, table.createdAt)],
+)
+
+/* -------------------------------------------------------- GitHub App */
+
+/**
+ * One row per GitHub App installation. `userId` is set when a signed-in Forge
+ * user completes the install flow; until then the installation exists but can
+ * trigger nothing, because there is no account to run on behalf of.
+ */
+export const githubInstallations = sqliteTable(
+  'github_installations',
+  {
+    /** GitHub's installation id, as text so it never overflows. */
+    id: text('id').primaryKey(),
+    accountLogin: text('account_login').notNull(),
+    accountType: text('account_type').notNull(),
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    deletedAt: text('deleted_at'),
+  },
+  (table) => [index('github_installations_user_idx').on(table.userId)],
 )
 
 /* ------------------------------------------------------------------- runs */
@@ -181,6 +233,11 @@ export const runs = sqliteTable(
     sessionId: text('session_id'),
     replayUrl: text('replay_url'),
     verifiesFindingId: text('verifies_finding_id'),
+    /** Pull-request runs: the commit under test and where the check is posted. */
+    commitSha: text('commit_sha'),
+    pullRequestNumber: integer('pull_request_number'),
+    githubInstallationId: text('github_installation_id'),
+    checkRunId: text('check_run_id'),
     /** Guards against a retried request creating a second billable session. */
     idempotencyKey: text('idempotency_key'),
     summary: text('summary'),
@@ -339,11 +396,45 @@ export const fixAttempts = sqliteTable(
   ],
 )
 
+/* -------------------------------------------------------------- schedules */
+
+/**
+ * Scheduled monitoring. One schedule per project: the cron handler picks up
+ * rows whose `nextRunAt` has passed, starts a run, and advances the pointer.
+ * Outcome and streak are kept here so a notification can say "still failing"
+ * rather than re-alerting on every tick.
+ */
+export const schedules = sqliteTable(
+  'schedules',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .unique()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    cadenceMinutes: integer('cadence_minutes').notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    notifyUrl: text('notify_url'),
+    nextRunAt: text('next_run_at'),
+    lastRunId: text('last_run_id'),
+    lastRunAt: text('last_run_at'),
+    lastOutcome: text('last_outcome').$type<ScheduleOutcome>(),
+    consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('schedules_due_idx').on(table.enabled, table.nextRunAt)],
+)
+
 /* -------------------------------------------------------------- relations */
 
 export const projectRelations = relations(projects, ({ one, many }) => ({
   owner: one(user, { fields: [projects.userId], references: [user.id] }),
   runs: many(runs),
+  schedule: one(schedules, {
+    fields: [projects.id],
+    references: [schedules.projectId],
+  }),
 }))
 
 export const runRelations = relations(runs, ({ one, many }) => ({
@@ -385,4 +476,7 @@ export const schema = {
   evidence,
   runEvents,
   fixAttempts,
+  apiTokens,
+  githubInstallations,
+  schedules,
 }

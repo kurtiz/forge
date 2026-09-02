@@ -42,10 +42,57 @@ apart the day one of those reasons shows up:
 | `server/agent` | Explorer, Operator, Judge, model router | contracts, domain, execution |
 | `server/evidence` | R2 artifacts and their metadata | contracts |
 | `server/runs` | Repository, run service, engine, Durable Object | everything above |
+| `server/tokens` | API token format, hashing, storage | db |
+| `server/github` | App auth, webhooks, checks, preview URLs | runs, security |
+| `server/monitoring` | Schedules, cadence arithmetic, the cron tick | runs |
+| `server/rest` | The public REST API | runs, auth, security |
 | `server/api` | Typed server functions | runs, auth |
 
 Dependencies point one way. `contracts`, `domain`, and `security` import nothing
 from Cloudflare at all, which is exactly why they are the parts under unit test.
+
+## Four ways in, one loop
+
+A run is started by the console, the CLI, a pull request, or a timer. All four
+converge on `startRun` and diverge again only at the end, when the result is
+delivered somewhere.
+
+```text
+console          CLI / CI            GitHub App           cron trigger
+(server fn)    (REST + token)     (signed webhook)      (due schedules)
+     │                │                   │                    │
+     └────────────────┴─────────┬─────────┴────────────────────┘
+                                ▼
+                          runs/service.startRun
+                     validate target · check ownership
+                      write the run · call the DO
+                                │
+                                ▼
+                          the engine, unchanged
+                                │
+                                ▼
+                       runs/outcome.publishRunOutcome
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+              GitHub check          schedule tick
+                                    + notification
+```
+
+Two things make this hold together rather than fanning into four half-systems.
+
+**Every entry point resolves to a `SessionUser` before it reaches `startRun`.**
+The console has a session cookie, the CLI has a bearer token, and both come out
+of `currentUser` as the same object, so `assertProjectAccess` is the single
+authorization path for all of them. A webhook has no user at all, which is why
+an installation is inert until somebody claims it in the console: that link is
+the only thing that can name the account a delivery acts on.
+
+**Publishing happens outside the engine.** `publishRunOutcome` runs in the
+Durable Object's `finally`, so a check gets a conclusion and a monitor records
+its tick whether the run completed, failed, or was canceled. It never throws:
+the evidence is already durable, and a failed delivery must not corrupt a run
+that succeeded.
 
 ## The run
 
@@ -185,6 +232,40 @@ runs/{runId}/
 
 Artifacts carry an expiry (14 days by default) because recordings are heavy and
 rarely read after a week.
+
+## Triggers and delivery
+
+```text
+trigger          started by                     delivered to
+---------------------------------------------------------------------
+manual           the console                    the console
+verify_fix       a finding's Verify fix         the finding
+cli              POST /api/v1/runs              the terminal's exit code
+pull_request     a signed GitHub webhook        a check on the commit
+scheduled        the cron tick                  a webhook notification
+```
+
+The trigger is stored on the run, so the history of a project reads as what it
+is: nightly monitors, pull request checks, and hand-started runs in one list,
+each labelled.
+
+### Scheduling
+
+One cron trigger fires every fifteen minutes. It decides nothing about cadence:
+`listDueSchedules` returns the rows whose `nextRunAt` has passed, and each row
+carries its own interval, so cadences from 30 minutes to daily share one
+trigger and one code path.
+
+A schedule's pointer is advanced *before* the run is started, not after. If
+starting throws, the pointer has already moved, so one broken project cannot
+pin the queue and starve every other monitor. The tick is bounded to ten
+schedules for the same reason a run is bounded: Solari sessions are billable
+and plan-limited, and a backlog should drain over several ticks rather than
+arrive at once.
+
+Notifications fire on transitions, not on states. First failure, recovery, and
+every fourth consecutive failure after that. A monitor that alerts every 30
+minutes for a week gets muted, and a muted monitor is worth nothing.
 
 ## What the agent never owns
 

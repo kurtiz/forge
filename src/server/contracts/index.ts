@@ -54,7 +54,18 @@ export const TERMINAL_RUN_STATUSES = [
   'canceled',
 ] as const satisfies readonly RunStatus[]
 
-export const runTriggerSchema = z.enum(['manual', 'verify_fix', 'scheduled'])
+/**
+ * How a run came to exist. `manual` is the console, `verify_fix` re-runs a
+ * finding's journey, `scheduled` is the monitoring cron, `pull_request` is the
+ * GitHub App reacting to a deployment, `cli` is the terminal.
+ */
+export const runTriggerSchema = z.enum([
+  'manual',
+  'verify_fix',
+  'scheduled',
+  'pull_request',
+  'cli',
+])
 export type RunTrigger = z.infer<typeof runTriggerSchema>
 
 export const runSchema = z.object({
@@ -68,6 +79,9 @@ export const runSchema = z.object({
   sessionId: z.string().nullable(),
   replayUrl: z.string().nullable(),
   verifiesFindingId: z.string().nullable(),
+  /** Set on runs the GitHub App started: the commit under test and its PR. */
+  commitSha: z.string().nullable(),
+  pullRequestNumber: z.number().nullable(),
   summary: z.string().nullable(),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
@@ -243,6 +257,12 @@ export const projectSchema = z.object({
    * being forgotten in a mapper.
    */
   hasCredentials: z.boolean(),
+  /**
+   * Where a pull request's preview deployment lives, for projects whose host
+   * does not report deployments to GitHub. Placeholders: `{number}`, `{branch}`,
+   * `{sha}`, `{sha7}`. Null means Forge waits for a `deployment_status` event.
+   */
+  previewUrlTemplate: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -294,6 +314,121 @@ export const createRunInputSchema = z.object({
   verifiesFindingId: z.string().max(60).optional(),
 })
 export type CreateRunInput = z.infer<typeof createRunInputSchema>
+
+export const updateProjectInputSchema = z.object({
+  projectId: z.string().min(3).max(64),
+  previewUrlTemplate: z
+    .string()
+    .trim()
+    .max(300)
+    .optional()
+    .transform((v) => (v ? v : null)),
+})
+export type UpdateProjectInput = z.infer<typeof updateProjectInputSchema>
+
+/* ------------------------------------------------------------ API tokens */
+
+/**
+ * A personal access token as the console shows it. The token itself is shown
+ * once at creation and never stored; only its hash and a display prefix are.
+ */
+export const apiTokenSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  prefix: z.string(),
+  lastUsedAt: z.string().nullable(),
+  createdAt: z.string(),
+})
+export type ApiToken = z.infer<typeof apiTokenSchema>
+
+export const createApiTokenInputSchema = z.object({
+  name: z.string().trim().min(1, 'Give the token a name').max(60),
+})
+
+/* -------------------------------------------------------------- REST API */
+
+/**
+ * Body of `POST /api/v1/runs`, the CLI's entry point. A URL is enough; the
+ * project is found or created from it so the terminal never has to know
+ * project ids.
+ */
+export const apiCreateRunSchema = z.object({
+  url: z.string().trim().min(1).max(2000).optional(),
+  projectId: z.string().min(3).max(64).optional(),
+  repo: z.string().trim().max(300).optional(),
+  goal: z.string().trim().max(400).optional(),
+  name: z.string().trim().min(2).max(60).optional(),
+  idempotencyKey: z.string().max(80).optional(),
+})
+export type ApiCreateRun = z.infer<typeof apiCreateRunSchema>
+
+/** What `GET /api/v1/runs/:id` returns and what the CLI renders. */
+export type RunReport = {
+  run: Run
+  project: Project
+  journeys: Journey[]
+  findings: Finding[]
+  /** Console URL for this run. */
+  url: string
+}
+
+/* ----------------------------------------------------------- monitoring */
+
+/** Cadences a schedule may use, in minutes. */
+export const SCHEDULE_CADENCES = [30, 60, 180, 360, 720, 1440] as const
+export type ScheduleCadence = (typeof SCHEDULE_CADENCES)[number]
+
+export const scheduleOutcomeSchema = z.enum(['passed', 'failed', 'error'])
+export type ScheduleOutcome = z.infer<typeof scheduleOutcomeSchema>
+
+export const scheduleSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  cadenceMinutes: z.number(),
+  enabled: z.boolean(),
+  /** Webhook that receives a JSON notification. Slack-compatible payload. */
+  notifyUrl: z.string().nullable(),
+  nextRunAt: z.string().nullable(),
+  lastRunId: z.string().nullable(),
+  lastRunAt: z.string().nullable(),
+  lastOutcome: scheduleOutcomeSchema.nullable(),
+  consecutiveFailures: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+export type Schedule = z.infer<typeof scheduleSchema>
+
+export const upsertScheduleInputSchema = z.object({
+  projectId: z.string().min(3).max(64),
+  cadenceMinutes: z
+    .number()
+    .int()
+    .refine(
+      (v): v is ScheduleCadence =>
+        (SCHEDULE_CADENCES as readonly number[]).includes(v),
+      'Choose one of the supported cadences.',
+    ),
+  enabled: z.boolean(),
+  notifyUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((v) => (v ? v : null)),
+})
+export type UpsertScheduleInput = z.infer<typeof upsertScheduleInputSchema>
+
+/* ---------------------------------------------------------------- GitHub */
+
+export const githubInstallationSchema = z.object({
+  id: z.string(),
+  accountLogin: z.string(),
+  accountType: z.string(),
+  /** Whether a Forge user has claimed this installation. */
+  linked: z.boolean(),
+  createdAt: z.string(),
+})
+export type GitHubInstallation = z.infer<typeof githubInstallationSchema>
 
 /* --------------------------------------------------------------- budgets */
 

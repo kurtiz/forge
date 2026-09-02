@@ -59,6 +59,14 @@ export function TopBar({
 
         <div className="ml-auto flex items-center gap-2">
           {right}
+          {user && !user.isAnonymous ? (
+            <Link
+              to="/settings"
+              className="hidden text-sm text-kumo-subtle no-underline hover:text-kumo-strong sm:inline"
+            >
+              Settings
+            </Link>
+          ) : null}
           <ThemeToggle />
           {user ? <AccountChip user={user} /> : null}
         </div>

@@ -15,6 +15,7 @@ import {
   JourneyStatusPill,
   RunStatusPill,
   SeverityPill,
+  TriggerTag,
 } from "#/components/app/status";
 import { RelativeTime } from "#/components/app/relative-time";
 import { ExecutorNotice } from "#/components/app/executor-notice";
@@ -42,7 +43,7 @@ function RunPage() {
     void router.invalidate();
   }, [router]);
 
-  const { events: liveEvents, live } = useRunStream({
+  const { events: liveEvents, live, currentStatus } = useRunStream({
     runId: run.id,
     status: run.status,
     initialEvents: events,
@@ -91,7 +92,11 @@ function RunPage() {
               <span className="font-mono text-base font-normal text-kumo-subtle">
                 {run.id}
               </span>
-              <RunStatusPill status={run.status}/>
+              <RunStatusPill status={currentStatus}/>
+              <TriggerTag
+                trigger={run.trigger}
+                pullRequestNumber={run.pullRequestNumber}
+              />
             </span>
           }
           description={
@@ -103,6 +108,14 @@ function RunPage() {
                   ? "Solari browser"
                   : "HTTP executor, no JavaScript"}
               </span>
+              {run.commitSha ? (
+                <>
+                  <span className="text-kumo-subtle">·</span>
+                  <span className="font-mono text-xs">
+                    {run.commitSha.slice(0, 7)}
+                  </span>
+                </>
+              ) : null}
               <span className="text-kumo-subtle">·</span>
               <RelativeTime iso={run.createdAt}/>
             </span>
@@ -116,7 +129,7 @@ function RunPage() {
                   </Button>
                 </a>
               ) : null}
-              {isRunLive(run.status) ? (
+              {isRunLive(currentStatus) ? (
                 <Button
                   variant="secondary-destructive"
                   loading={stopping}
@@ -132,7 +145,7 @@ function RunPage() {
 
         <ExecutorNotice executor={run.executor}/>
 
-        <PhaseRail status={run.status}/>
+        <PhaseRail status={currentStatus}/>
 
         {run.summary ? (
           <p

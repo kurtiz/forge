@@ -10,7 +10,7 @@ import { PlusIcon } from "@phosphor-icons/react";
 import { Button } from "@cloudflare/kumo/components/button";
 import { Empty } from "@cloudflare/kumo/components/empty";
 import { Page, PageHeader, Section, Stat, TopBar } from "#/components/app/shell";
-import { RunStatusPill } from "#/components/app/status";
+import { RunStatusPill, TriggerTag } from "#/components/app/status";
 import { ExecutorNotice } from "#/components/app/executor-notice";
 import { RelativeTime } from "#/components/app/relative-time";
 import { getDashboard } from "#/server/api";
@@ -138,6 +138,10 @@ function Dashboard() {
                         <span className="text-sm font-medium text-kumo-strong">
                           {run.projectName}
                         </span>
+                        <TriggerTag
+                          trigger={run.trigger}
+                          pullRequestNumber={run.pullRequestNumber}
+                        />
                         <span className="min-w-0 flex-1 truncate text-xs text-kumo-subtle">
                           {run.summary ?? "In progress"}
                         </span>

@@ -12,14 +12,15 @@
 		"deploy": "pnpm run build && wrangler deploy",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsc --noEmit && tsc -p cli --noEmit",
 		"check": "pnpm run typecheck && pnpm run test && pnpm run build",
 		"generate-routes": "tsr generate",
 		"cf-typegen": "wrangler types",
 		"db:migrate": "wrangler d1 migrations apply forge --local",
 		"db:migrate:remote": "wrangler d1 migrations apply forge --remote",
 		"db:generate": "drizzle-kit generate",
-		"db:studio": "drizzle-kit studio"
+		"db:studio": "drizzle-kit studio",
+		"build:cli": "tsc -p cli"
 	},
 	"dependencies": {
 		"@cloudflare/kumo": "^2.12.0",

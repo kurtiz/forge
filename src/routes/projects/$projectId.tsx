@@ -9,11 +9,18 @@ import { createFileRoute, Link, redirect, useRouter } from '@tanstack/react-rout
 import { PlayIcon, TrashIcon } from '@phosphor-icons/react'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Empty } from '@cloudflare/kumo/components/empty'
+import { Input } from '@cloudflare/kumo/components/input'
 import { Page, PageHeader, Section, TopBar } from '#/components/app/shell'
-import { RunStatusPill } from '#/components/app/status'
+import { RunStatusPill, TriggerTag } from '#/components/app/status'
 import { RelativeTime } from '#/components/app/relative-time'
 import { ExecutorNotice } from '#/components/app/executor-notice'
-import { deleteProject, getProject, startVerification } from '#/server/api'
+import { SchedulePanel } from '#/components/app/schedule-panel'
+import {
+  deleteProject,
+  getProject,
+  startVerification,
+  updateProject,
+} from '#/server/api'
 
 export const Route = createFileRoute('/projects/$projectId')({
   beforeLoad: ({ context }) => {
@@ -24,10 +31,13 @@ export const Route = createFileRoute('/projects/$projectId')({
 })
 
 function ProjectPage() {
-  const { project, runs } = Route.useLoaderData()
+  const { project, runs, schedule } = Route.useLoaderData()
   const { session } = Route.useRouteContext()
   const router = useRouter()
   const [busy, setBusy] = useState(false)
+  const [previewTemplate, setPreviewTemplate] = useState(
+    project.previewUrlTemplate ?? '',
+  )
 
   async function run() {
     setBusy(true)
@@ -37,6 +47,14 @@ function ProjectPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function savePreviewTemplate() {
+    if (previewTemplate === (project.previewUrlTemplate ?? '')) return
+    await updateProject({
+      data: { projectId: project.id, previewUrlTemplate: previewTemplate },
+    })
+    await router.invalidate()
   }
 
   async function remove() {
@@ -112,6 +130,30 @@ function ProjectPage() {
 
         <ExecutorNotice executor={session.executor} />
 
+        <Section title="Monitoring">
+          <SchedulePanel projectId={project.id} schedule={schedule} />
+        </Section>
+
+        {project.repoUrl ? (
+          <Section title="Pull requests">
+            <p className="mt-0 mb-5 max-w-[62ch] text-sm text-kumo-subtle">
+              With the GitHub App installed, Forge verifies each pull request's
+              preview deployment and posts a check on the commit. Most hosts
+              announce their previews to GitHub and nothing else is needed. If
+              yours does not, give the pattern here.
+            </p>
+            <Input
+              label="Preview URL pattern"
+              inputMode="url"
+              placeholder="https://pr-{number}.yourapp.pages.dev"
+              description="Optional. Placeholders: {number}, {branch}, {sha}, {sha7}."
+              value={previewTemplate}
+              onChange={(e) => setPreviewTemplate(e.currentTarget.value)}
+              onBlur={savePreviewTemplate}
+            />
+          </Section>
+        ) : null}
+
         <Section title="Verification history" meta={`${runs.length} runs`}>
           {runs.length === 0 ? (
             <Empty
@@ -129,11 +171,10 @@ function ProjectPage() {
                     className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3 no-underline transition-colors hover:bg-kumo-tint"
                   >
                     <RunStatusPill status={entry.status} />
-                    {entry.trigger === 'verify_fix' ? (
-                      <span className="rounded border border-kumo-hairline px-1.5 py-0.5 text-[11px] text-kumo-subtle">
-                        Fix check
-                      </span>
-                    ) : null}
+                    <TriggerTag
+                      trigger={entry.trigger}
+                      pullRequestNumber={entry.pullRequestNumber}
+                    />
                     <span className="min-w-0 flex-1 truncate text-sm text-kumo-subtle">
                       {entry.summary ?? 'In progress'}
                     </span>

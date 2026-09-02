@@ -1,5 +1,8 @@
 {
   "include": ["**/*.ts", "**/*.tsx"],
+  /* The CLI ships separately and compiles under cli/tsconfig.json: Node
+     libraries, no DOM, and an emit. */
+  "exclude": ["cli", "node_modules", "dist"],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",

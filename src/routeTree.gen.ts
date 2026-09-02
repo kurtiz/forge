@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as DemoIndexRouteImport } from './routes/demo/index'
 import { Route as DemoSplatRouteImport } from './routes/demo/$'
@@ -20,7 +21,13 @@ import { Route as ProjectsNewRouteImport } from './routes/projects/new'
 import { Route as RunsRunIdRouteImport } from './routes/runs/$runId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiEvidenceEvidenceIdRouteImport } from './routes/api/evidence/$evidenceId'
+import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
+import { Route as ApiGithubWebhookRouteImport } from './routes/api/github/webhook'
+import { Route as ApiV1ProjectsRouteImport } from './routes/api/v1/projects'
+import { Route as ApiV1RunsRouteImport } from './routes/api/v1/runs'
+import { Route as ApiV1WhoamiRouteImport } from './routes/api/v1/whoami'
 import { Route as ApiRunsRunIdStreamRouteImport } from './routes/api/runs/$runId/stream'
+import { Route as ApiV1RunsRunIdRouteImport } from './routes/api/v1/runs/$runId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,6 +37,11 @@ const IndexRoute = IndexRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignInRoute = SignInRouteImport.update({
@@ -77,15 +89,46 @@ const ApiEvidenceEvidenceIdRoute = ApiEvidenceEvidenceIdRouteImport.update({
   path: '/api/evidence/$evidenceId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
+  id: '/api/github/setup',
+  path: '/api/github/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubWebhookRoute = ApiGithubWebhookRouteImport.update({
+  id: '/api/github/webhook',
+  path: '/api/github/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1ProjectsRoute = ApiV1ProjectsRouteImport.update({
+  id: '/api/v1/projects',
+  path: '/api/v1/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1RunsRoute = ApiV1RunsRouteImport.update({
+  id: '/api/v1/runs',
+  path: '/api/v1/runs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1WhoamiRoute = ApiV1WhoamiRouteImport.update({
+  id: '/api/v1/whoami',
+  path: '/api/v1/whoami',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiRunsRunIdStreamRoute = ApiRunsRunIdStreamRouteImport.update({
   id: '/api/runs/$runId/stream',
   path: '/api/runs/$runId/stream',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1RunsRunIdRoute = ApiV1RunsRunIdRouteImport.update({
+  id: '/$runId',
+  path: '/$runId',
+  getParentRoute: () => ApiV1RunsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/demo/$': typeof DemoSplatRoute
   '/findings/$findingId': typeof FindingsFindingIdRoute
@@ -95,11 +138,18 @@ export interface FileRoutesByFullPath {
   '/demo/': typeof DemoIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/evidence/$evidenceId': typeof ApiEvidenceEvidenceIdRoute
+  '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/v1/projects': typeof ApiV1ProjectsRoute
+  '/api/v1/runs': typeof ApiV1RunsRouteWithChildren
+  '/api/v1/whoami': typeof ApiV1WhoamiRoute
   '/api/runs/$runId/stream': typeof ApiRunsRunIdStreamRoute
+  '/api/v1/runs/$runId': typeof ApiV1RunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/demo/$': typeof DemoSplatRoute
   '/findings/$findingId': typeof FindingsFindingIdRoute
@@ -109,12 +159,19 @@ export interface FileRoutesByTo {
   '/demo': typeof DemoIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/evidence/$evidenceId': typeof ApiEvidenceEvidenceIdRoute
+  '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/v1/projects': typeof ApiV1ProjectsRoute
+  '/api/v1/runs': typeof ApiV1RunsRouteWithChildren
+  '/api/v1/whoami': typeof ApiV1WhoamiRoute
   '/api/runs/$runId/stream': typeof ApiRunsRunIdStreamRoute
+  '/api/v1/runs/$runId': typeof ApiV1RunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/demo/$': typeof DemoSplatRoute
   '/findings/$findingId': typeof FindingsFindingIdRoute
@@ -124,13 +181,20 @@ export interface FileRoutesById {
   '/demo/': typeof DemoIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/evidence/$evidenceId': typeof ApiEvidenceEvidenceIdRoute
+  '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/v1/projects': typeof ApiV1ProjectsRoute
+  '/api/v1/runs': typeof ApiV1RunsRouteWithChildren
+  '/api/v1/whoami': typeof ApiV1WhoamiRoute
   '/api/runs/$runId/stream': typeof ApiRunsRunIdStreamRoute
+  '/api/v1/runs/$runId': typeof ApiV1RunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/dashboard'
+    | '/settings'
     | '/sign-in'
     | '/demo/$'
     | '/findings/$findingId'
@@ -140,11 +204,18 @@ export interface FileRouteTypes {
     | '/demo/'
     | '/api/auth/$'
     | '/api/evidence/$evidenceId'
+    | '/api/github/setup'
+    | '/api/github/webhook'
+    | '/api/v1/projects'
+    | '/api/v1/runs'
+    | '/api/v1/whoami'
     | '/api/runs/$runId/stream'
+    | '/api/v1/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/dashboard'
+    | '/settings'
     | '/sign-in'
     | '/demo/$'
     | '/findings/$findingId'
@@ -154,11 +225,18 @@ export interface FileRouteTypes {
     | '/demo'
     | '/api/auth/$'
     | '/api/evidence/$evidenceId'
+    | '/api/github/setup'
+    | '/api/github/webhook'
+    | '/api/v1/projects'
+    | '/api/v1/runs'
+    | '/api/v1/whoami'
     | '/api/runs/$runId/stream'
+    | '/api/v1/runs/$runId'
   id:
     | '__root__'
     | '/'
     | '/dashboard'
+    | '/settings'
     | '/sign-in'
     | '/demo/$'
     | '/findings/$findingId'
@@ -168,12 +246,19 @@ export interface FileRouteTypes {
     | '/demo/'
     | '/api/auth/$'
     | '/api/evidence/$evidenceId'
+    | '/api/github/setup'
+    | '/api/github/webhook'
+    | '/api/v1/projects'
+    | '/api/v1/runs'
+    | '/api/v1/whoami'
     | '/api/runs/$runId/stream'
+    | '/api/v1/runs/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
+  SettingsRoute: typeof SettingsRoute
   SignInRoute: typeof SignInRoute
   DemoSplatRoute: typeof DemoSplatRoute
   FindingsFindingIdRoute: typeof FindingsFindingIdRoute
@@ -183,6 +268,11 @@ export interface RootRouteChildren {
   DemoIndexRoute: typeof DemoIndexRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiEvidenceEvidenceIdRoute: typeof ApiEvidenceEvidenceIdRoute
+  ApiGithubSetupRoute: typeof ApiGithubSetupRoute
+  ApiGithubWebhookRoute: typeof ApiGithubWebhookRoute
+  ApiV1ProjectsRoute: typeof ApiV1ProjectsRoute
+  ApiV1RunsRoute: typeof ApiV1RunsRouteWithChildren
+  ApiV1WhoamiRoute: typeof ApiV1WhoamiRoute
   ApiRunsRunIdStreamRoute: typeof ApiRunsRunIdStreamRoute
 }
 
@@ -200,6 +290,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sign-in': {
@@ -265,6 +362,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEvidenceEvidenceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/github/setup': {
+      id: '/api/github/setup'
+      path: '/api/github/setup'
+      fullPath: '/api/github/setup'
+      preLoaderRoute: typeof ApiGithubSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/webhook': {
+      id: '/api/github/webhook'
+      path: '/api/github/webhook'
+      fullPath: '/api/github/webhook'
+      preLoaderRoute: typeof ApiGithubWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/projects': {
+      id: '/api/v1/projects'
+      path: '/api/v1/projects'
+      fullPath: '/api/v1/projects'
+      preLoaderRoute: typeof ApiV1ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/runs': {
+      id: '/api/v1/runs'
+      path: '/api/v1/runs'
+      fullPath: '/api/v1/runs'
+      preLoaderRoute: typeof ApiV1RunsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/whoami': {
+      id: '/api/v1/whoami'
+      path: '/api/v1/whoami'
+      fullPath: '/api/v1/whoami'
+      preLoaderRoute: typeof ApiV1WhoamiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/runs/$runId/stream': {
       id: '/api/runs/$runId/stream'
       path: '/api/runs/$runId/stream'
@@ -272,12 +404,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRunsRunIdStreamRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/runs/$runId': {
+      id: '/api/v1/runs/$runId'
+      path: '/$runId'
+      fullPath: '/api/v1/runs/$runId'
+      preLoaderRoute: typeof ApiV1RunsRunIdRouteImport
+      parentRoute: typeof ApiV1RunsRoute
+    }
   }
 }
+
+interface ApiV1RunsRouteChildren {
+  ApiV1RunsRunIdRoute: typeof ApiV1RunsRunIdRoute
+}
+
+const ApiV1RunsRouteChildren: ApiV1RunsRouteChildren = {
+  ApiV1RunsRunIdRoute: ApiV1RunsRunIdRoute,
+}
+
+const ApiV1RunsRouteWithChildren = ApiV1RunsRoute._addFileChildren(
+  ApiV1RunsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
+  SettingsRoute: SettingsRoute,
   SignInRoute: SignInRoute,
   DemoSplatRoute: DemoSplatRoute,
   FindingsFindingIdRoute: FindingsFindingIdRoute,
@@ -287,6 +439,11 @@ const rootRouteChildren: RootRouteChildren = {
   DemoIndexRoute: DemoIndexRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiEvidenceEvidenceIdRoute: ApiEvidenceEvidenceIdRoute,
+  ApiGithubSetupRoute: ApiGithubSetupRoute,
+  ApiGithubWebhookRoute: ApiGithubWebhookRoute,
+  ApiV1ProjectsRoute: ApiV1ProjectsRoute,
+  ApiV1RunsRoute: ApiV1RunsRouteWithChildren,
+  ApiV1WhoamiRoute: ApiV1WhoamiRoute,
   ApiRunsRunIdStreamRoute: ApiRunsRunIdStreamRoute,
 }
 export const routeTree = rootRouteImport

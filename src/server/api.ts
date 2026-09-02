@@ -10,13 +10,19 @@ import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import {
+  createApiTokenInputSchema,
   createProjectInputSchema,
+  updateProjectInputSchema,
+  upsertScheduleInputSchema,
+  type ApiToken,
   type Evidence,
   type Finding,
+  type GitHubInstallation,
   type Journey,
   type Project,
   type Run,
   type RunEvent,
+  type Schedule,
 } from './contracts'
 import { currentUser, requireUser, type SessionUser } from './auth'
 import { plannedExecutorKind } from './execution'
@@ -30,6 +36,10 @@ import {
 import * as repo from './runs/repository'
 import { cancelRun, startRun } from './runs/service'
 import { listRunEvidence } from './evidence/store'
+import * as tokens from './tokens/repository'
+import * as monitor from './monitoring/repository'
+import { githubAppSlug, githubConfigured } from './github/app'
+import { listInstallations, unlinkInstallation } from './github/installations'
 
 const idSchema = z.string().min(3).max(64)
 
@@ -142,6 +152,7 @@ export const deleteProject = createServerFn({ method: 'POST' })
 export type ProjectPayload = {
   project: Project
   runs: Run[]
+  schedule: Schedule | null
 }
 
 export const getProject = createServerFn({ method: 'GET' })
@@ -149,7 +160,124 @@ export const getProject = createServerFn({ method: 'GET' })
   .handler(async ({ data }): Promise<ProjectPayload> => {
     const me = await user()
     const project = await repo.assertProjectAccess(data.projectId, me.id)
-    return { project, runs: await repo.listRuns(project.id) }
+    const [runs, schedule] = await Promise.all([
+      repo.listRuns(project.id),
+      monitor.getSchedule(project.id),
+    ])
+    return { project, runs, schedule }
+  })
+
+export const updateProject = createServerFn({ method: 'POST' })
+  .validator(updateProjectInputSchema)
+  .handler(async ({ data }): Promise<Project> => {
+    const me = await user()
+    await repo.assertProjectAccess(data.projectId, me.id)
+    await repo.updateProject(data.projectId, {
+      previewUrlTemplate: data.previewUrlTemplate,
+    })
+    return repo.assertProjectAccess(data.projectId, me.id)
+  })
+
+/* --------------------------------------------------------------- monitoring */
+
+/**
+ * Scheduled monitoring for one project. Disabling clears the due time rather
+ * than deleting the row, so the cadence and the webhook survive being paused.
+ */
+export const saveSchedule = createServerFn({ method: 'POST' })
+  .validator(upsertScheduleInputSchema)
+  .handler(async ({ data }): Promise<Schedule> => {
+    const me = await user()
+    await repo.assertProjectAccess(data.projectId, me.id)
+
+    // A notification URL is fetched by the Worker, so it gets the same policy
+    // as a verification target rather than being trusted because it is ours.
+    if (data.notifyUrl) assertSafeTargetUrl(data.notifyUrl)
+
+    return monitor.upsertSchedule({
+      projectId: data.projectId,
+      cadenceMinutes: data.cadenceMinutes,
+      enabled: data.enabled,
+      notifyUrl: data.notifyUrl,
+    })
+  })
+
+export const removeSchedule = createServerFn({ method: 'POST' })
+  .validator(z.object({ projectId: idSchema }))
+  .handler(async ({ data }) => {
+    const me = await user()
+    await repo.assertProjectAccess(data.projectId, me.id)
+    await monitor.deleteSchedule(data.projectId)
+    return { ok: true }
+  })
+
+/* ------------------------------------------------------------- settings */
+
+export type SettingsPayload = {
+  tokens: ApiToken[]
+  installations: GitHubInstallation[]
+  github: {
+    configured: boolean
+    /** Where to send someone to install the app, when there is one. */
+    installUrl: string | null
+  }
+  /** Guests cannot hold tokens; the UI explains why rather than failing. */
+  isAnonymous: boolean
+}
+
+export const getSettings = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<SettingsPayload> => {
+    const me = await user()
+    const slug = githubAppSlug()
+
+    const [list, installations] = await Promise.all([
+      me.isAnonymous ? Promise.resolve([]) : tokens.listTokens(me.id),
+      me.isAnonymous ? Promise.resolve([]) : listInstallations(me.id),
+    ])
+
+    return {
+      tokens: list,
+      installations,
+      github: {
+        configured: githubConfigured(),
+        installUrl: slug ? `https://github.com/apps/${slug}/installations/new` : null,
+      },
+      isAnonymous: me.isAnonymous,
+    }
+  },
+)
+
+/**
+ * Creates a token and returns it once. The plaintext exists in this response
+ * and nowhere else: only its hash is stored, so a lost token is replaced, not
+ * recovered.
+ */
+export const createApiToken = createServerFn({ method: 'POST' })
+  .validator(createApiTokenInputSchema)
+  .handler(async ({ data }): Promise<{ token: string; record: ApiToken }> => {
+    const me = await user()
+    if (me.isAnonymous) {
+      throw new tokens.TokenError(
+        'Create an account before issuing API tokens. A guest session is deleted along with its tokens.',
+      )
+    }
+    return tokens.createToken({ userId: me.id, name: data.name })
+  })
+
+export const revokeApiToken = createServerFn({ method: 'POST' })
+  .validator(z.object({ tokenId: idSchema }))
+  .handler(async ({ data }) => {
+    const me = await user()
+    await tokens.revokeToken(data.tokenId, me.id)
+    return { ok: true }
+  })
+
+export const disconnectInstallation = createServerFn({ method: 'POST' })
+  .validator(z.object({ installationId: z.string().min(1).max(40) }))
+  .handler(async ({ data }) => {
+    const me = await user()
+    await unlinkInstallation(data.installationId, me.id)
+    return { ok: true }
   })
 
 /* -------------------------------------------------------------------- runs */

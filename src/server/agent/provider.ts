@@ -10,6 +10,21 @@ import { env } from 'cloudflare:workers'
 
 export { extractJson } from './json'
 
+/**
+ * Truncates and redacts sensitive data for dev logging.
+ * Redacts API keys, tokens, and long strings.
+ */
+function redactForLog(text: string, maxLength = 500): string {
+  let redacted = text
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [REDACTED]')
+    .replace(/api[_-]?key['":\s]*['"][^'"]+['"]/gi, 'api_key: [REDACTED]')
+    .replace(/token['":\s]*['"][^'"]+['"]/gi, 'token: [REDACTED]')
+  if (redacted.length > maxLength) {
+    redacted = redacted.slice(0, maxLength) + '... [truncated]'
+  }
+  return redacted
+}
+
 export type ModelTask = 'discovery' | 'judging'
 
 export type ModelInput = {
@@ -41,6 +56,8 @@ class WorkersAiProvider implements ModelProvider {
 
   async generate(input: ModelInput): Promise<ModelOutput> {
     const model = this.modelFor(input.task)
+    console.debug(`[provider] WorkersAI calling ${model} for ${input.task}`)
+    
     const result = (await env.AI.run(model as never, {
       messages: [
         { role: 'system', content: input.system },
@@ -50,7 +67,10 @@ class WorkersAiProvider implements ModelProvider {
       temperature: 0.2,
     } as never)) as { response?: string }
 
-    return { text: result.response ?? '', model }
+    const responseText = result.response ?? ''
+    console.debug(`[provider] Raw response (${responseText.length} chars): ${redactForLog(responseText)}`)
+    
+    return { text: responseText, model }
   }
 }
 
@@ -65,6 +85,8 @@ class GatewayProvider implements ModelProvider {
   ) {}
 
   async generate(input: ModelInput): Promise<ModelOutput> {
+    console.debug(`[provider] Gateway calling ${this.model} for ${input.task}`)
+    
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -83,14 +105,19 @@ class GatewayProvider implements ModelProvider {
     })
 
     if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Could not read error body')
+      console.error(`[provider] Gateway error ${response.status}: ${redactForLog(errorText)}`)
       throw new Error(`Model gateway returned ${response.status}`)
     }
 
     const body = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>
     }
+    const responseText = body.choices?.[0]?.message?.content ?? ''
+    console.debug(`[provider] Raw response (${responseText.length} chars): ${redactForLog(responseText)}`)
+    
     return {
-      text: body.choices?.[0]?.message?.content ?? '',
+      text: responseText,
       model: this.model,
     }
   }
@@ -99,6 +126,7 @@ class GatewayProvider implements ModelProvider {
 class UnavailableProvider implements ModelProvider {
   readonly available = false
   async generate(): Promise<ModelOutput> {
+    console.debug('[provider] UnavailableProvider: no model provider configured')
     throw new Error('No model provider is configured.')
   }
 }

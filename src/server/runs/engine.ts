@@ -647,9 +647,9 @@ export async function executeRun(
       )
     }
 
-    if (!canceled()) await finish(input.runId, summary, hooks)
     const finalStatus = canceled() ? 'canceled' : 'completed'
     await setStatus(finalStatus, 'Run complete')
+    if (!canceled()) await finish(input.runId, summary, hooks)
 
     recordRunMetrics({
       run: {

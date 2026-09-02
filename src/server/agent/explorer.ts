@@ -36,10 +36,12 @@ export async function discoverJourneys(
     rankJourneys(journeys, limit, options)
 
   if (!provider.available) {
+    console.debug('[explorer] Provider not available, using heuristic-only discovery')
     return { journeys: rank(heuristic), source: 'heuristic', model: null }
   }
 
   try {
+    console.debug(`[explorer] Calling model for discovery at ${observation.url}`)
     const output = await provider.generate({
       task: 'discovery',
       system: EXPLORER_SYSTEM,
@@ -47,17 +49,28 @@ export async function discoverJourneys(
       maxTokens: 700,
     })
 
+    console.debug(`[explorer] Model returned ${output.text.length} chars, attempting parse`)
     const parsed = explorerOutputSchema.safeParse(extractJson(output.text))
-    if (!parsed.success || parsed.data.journeys.length === 0) {
+    
+    if (!parsed.success) {
+      console.debug(`[explorer] Schema validation failed: ${parsed.error.issues.map(i => i.message).join(', ')}`)
+      return { journeys: rank(heuristic), source: 'heuristic', model: null }
+    }
+    
+    if (parsed.data.journeys.length === 0) {
+      console.debug('[explorer] Model returned 0 journeys, using heuristic fallback')
       return { journeys: rank(heuristic), source: 'heuristic', model: null }
     }
 
+    console.debug(`[explorer] Model discovery succeeded: ${parsed.data.journeys.length} journeys`)
     return {
       journeys: rank(parsed.data.journeys),
       source: 'model',
       model: output.model,
     }
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.debug(`[explorer] Model call failed: ${message}`)
     // Discovery is not worth failing a run over: the heuristic path covers it.
     return { journeys: rank(heuristic), source: 'heuristic', model: null }
   }
@@ -114,17 +127,21 @@ const ACTION_WORDS: Array<[RegExp, string]> = [
 ]
 
 /**
- * Derives journeys from what the page actually offers. Deliberately boring:
- * its job is to keep a run useful when the model is unavailable, not to be
- * clever.
+ * Derives journeys from what the page actually offers. When the page has
+ * actionable elements (links, buttons), it matches them against known action
+ * patterns. When the page is sparse — e.g. a landing page that only mentions
+ * sub-paths — it falls back to extracting paths from the page text and
+ * inferring likely sub-pages from the URL structure.
  */
 function heuristicJourneys(observation: PageObservation): DiscoveredJourney[] {
   const found = new Map<string, DiscoveredJourney>()
+  const currentPath = new URL(observation.url).pathname || '/'
 
   const candidates = observation.elements.filter(
     (e) => e.role === 'link' || e.role === 'button',
   )
 
+  // --- Phase 1: match element text against known action patterns ---
   for (const element of candidates) {
     for (const [pattern, name] of ACTION_WORDS) {
       if (!pattern.test(element.name)) continue
@@ -152,17 +169,128 @@ function heuristicJourneys(observation: PageObservation): DiscoveredJourney[] {
     }
   }
 
-  if (found.size === 0) {
+  if (found.size > 0) {
+    console.debug(`[explorer] Phase 1 matched: ${found.size} journeys from action words`)
+    return [...found.values()]
+  }
+
+  // --- Phase 2: if sparse, extract paths from page text ---
+  const textPaths = extractPathsFromText(observation.text, observation.url)
+  for (const p of textPaths) {
+    if (found.has(p.label)) continue
     found.set(
-      'Load the entry page',
+      p.label,
       discoveredJourneySchema.parse({
-        name: 'Load the entry page',
-        goal: 'The entry page loads without server or client errors.',
-        priority: 0.5,
-        entryPath: new URL(observation.url).pathname || '/',
+        name: p.label,
+        goal: `Navigate to ${p.path} and verify the page loads without errors.`,
+        priority: 0.55,
+        entryPath: p.path,
       }),
     )
   }
 
+  if (found.size > 0) {
+    console.debug(`[explorer] Phase 2 matched: ${found.size} journeys from text paths`)
+    return [...found.values()]
+  }
+
+  // --- Phase 3: still sparse — infer sub-pages from URL structure ---
+  const inferred = inferSubPages(currentPath, observation.text)
+  for (const p of inferred) {
+    if (found.has(p.label)) continue
+    found.set(
+      p.label,
+      discoveredJourneySchema.parse({
+        name: p.label,
+        goal: `Navigate to ${p.path} and verify the page loads without errors.`,
+        priority: 0.5,
+        entryPath: p.path,
+      }),
+    )
+  }
+
+  if (found.size > 0) {
+    console.debug(`[explorer] Phase 3 matched: ${found.size} journeys from inferred subpages`)
+    return [...found.values()]
+  }
+
+  // --- Phase 4: last resort — just load the entry page ---
+  console.debug('[explorer] Phase 4: using fallback entry page journey')
+  found.set(
+    'Load the entry page',
+    discoveredJourneySchema.parse({
+      name: 'Load the entry page',
+      goal: 'The entry page loads without server or client errors.',
+      priority: 0.5,
+      entryPath: currentPath,
+    }),
+  )
+
   return [...found.values()]
+}
+
+/** Matches paths like /eightbrothers/login, /api/v2/users, /settings */
+const PATH_PATTERN = /(?:^|\s|[,;:])((?:\/[a-zA-Z0-9_-]+){1,6})(?:\s|[,;:.]|$)/g
+
+/**
+ * Extracts path-like strings from page text. Filters out static-asset
+ * extensions and common non-navigable paths.
+ */
+function extractPathsFromText(
+  text: string,
+  currentUrl: string,
+): Array<{ label: string; path: string }> {
+  const results: Array<{ label: string; path: string }> = []
+  const seen = new Set<string>()
+  const currentPath = new URL(currentUrl).pathname || '/'
+
+  let match: RegExpExecArray | null
+  while ((match = PATH_PATTERN.exec(text)) !== null) {
+    const raw = match[1]
+    // Skip static assets
+    if (/\.\w{2,4}$/.test(raw)) continue
+    // Skip the current path itself
+    if (raw === currentPath) continue
+    // Normalise trailing slash
+    const path = raw.endsWith('/') && raw.length > 1 ? raw.slice(0, -1) : raw
+    if (seen.has(path)) continue
+    seen.add(path)
+
+    // Build a human-readable label from the last path segment
+    const segments = path.split('/').filter(Boolean)
+    const lastSegment = segments[segments.length - 1] ?? path
+    const label = `Navigate to ${lastSegment.replace(/[-_]/g, ' ')}`
+
+    results.push({ label, path })
+    if (results.length >= 4) break // cap at 4 extracted paths
+  }
+
+  return results
+}
+
+/**
+ * When the page text is completely empty of paths, infer likely sub-pages
+ * from common URL conventions (e.g. a root page → try /dashboard, /login).
+ */
+function inferSubPages(
+  currentPath: string,
+  text: string,
+): Array<{ label: string; path: string }> {
+  const lowerText = text.toLowerCase()
+  const results: Array<{ label: string; path: string }> = []
+
+  // If text mentions "sign in" or "login", navigate to a login path
+  if (/sign\s*in|log\s*in|login/i.test(lowerText)) {
+    // Try the current path + /login first
+    const loginPath = currentPath === '/' ? '/login' : `${currentPath}/login`
+    results.push({ label: 'Navigate to login page', path: loginPath })
+  }
+
+  // If text mentions "dashboard" or "admin"
+  if (/dashboard|admin|manage/i.test(lowerText)) {
+    const dashPath = currentPath === '/' ? '/dashboard' : `${currentPath}/dashboard`
+    results.push({ label: 'Navigate to dashboard', path: dashPath })
+  }
+
+  return results
 }

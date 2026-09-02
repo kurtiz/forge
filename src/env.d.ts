@@ -25,6 +25,18 @@ interface ForgeOptionalEnv {
 
   /** Set to "1" to repair the seeded defects in the bundled demo app. */
   FORGE_DEMO_FIXED?: string
+
+  /**
+   * GitHub App credentials. All three are required together: without them the
+   * webhook endpoint refuses every delivery and the console says the
+   * integration is unavailable, rather than half-working.
+   */
+  GITHUB_APP_ID?: string
+  /** PKCS#8 PEM. GitHub issues PKCS#1; `openssl pkcs8 -topk8` converts it. */
+  GITHUB_APP_PRIVATE_KEY?: string
+  GITHUB_WEBHOOK_SECRET?: string
+  /** The app's URL slug, used to build the install link. */
+  GITHUB_APP_SLUG?: string
 }
 
 interface Env extends ForgeOptionalEnv {}

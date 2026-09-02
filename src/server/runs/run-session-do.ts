@@ -10,6 +10,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { JsonValue } from '../contracts'
 import { executeRun, type EngineInput } from './engine'
+import { publishRunOutcome } from './outcome'
 import * as repo from './repository'
 
 type StartMessage = EngineInput
@@ -60,6 +61,12 @@ export class RunSessionDO extends DurableObject<Env> {
       })
     } finally {
       this.running = false
+      /*
+       * Outside the engine and inside the `finally`, so a GitHub check gets a
+       * conclusion and a monitor records its tick whether the run completed,
+       * failed, or was canceled. It never throws.
+       */
+      await publishRunOutcome(input.runId)
       await this.closeWatchers()
     }
   }
