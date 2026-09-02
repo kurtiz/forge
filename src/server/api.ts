@@ -14,8 +14,12 @@ import {
   createApiTokenInputSchema,
   createCredentialInputSchema,
   createProjectInputSchema,
+  createProjectJourneyInputSchema,
+  createSampleValueInputSchema,
   updateCredentialInputSchema,
   updateProjectInputSchema,
+  updateProjectJourneyInputSchema,
+  updateSampleValueInputSchema,
   upsertScheduleInputSchema,
   type ApiToken,
   type Evidence,
@@ -24,6 +28,8 @@ import {
   type Journey,
   type Project,
   type ProjectCredential,
+  type ProjectJourney,
+  type ProjectSampleValue,
   type Run,
   type RunEvent,
   type Schedule,
@@ -290,6 +296,100 @@ export const makeCredentialDefault = createServerFn({ method: 'POST' })
     return { ok: true }
   })
 
+/* ------------------------------------------------------- the project's plan */
+
+/**
+ * Adds a journey the project wants verified every run.
+ *
+ * Discovery is a guess, and the journey a team actually cares about is not
+ * always the one a model ranks first. A planned journey runs before any
+ * discovered one and is never re-invented under a different name.
+ */
+export const addProjectJourney = createServerFn({ method: 'POST' })
+  .validator(createProjectJourneyInputSchema)
+  .handler(async ({ data }): Promise<ProjectJourney> => {
+    const me = await user()
+    await repo.assertProjectAccess(data.projectId, me.id)
+
+    return repo.insertProjectJourney({
+      projectId: data.projectId,
+      name: data.name,
+      // A journey with no goal is still a journey: the name is what the
+      // Operator matches on, and the goal only sharpens it.
+      goal: data.goal || data.name,
+      entryPath: data.entryPath,
+      priority: data.priority,
+      enabled: data.enabled ?? true,
+    })
+  })
+
+export const editProjectJourney = createServerFn({ method: 'POST' })
+  .validator(updateProjectJourneyInputSchema)
+  .handler(async ({ data }) => {
+    const me = await user()
+    await repo.assertPlannedJourneyAccess(data.journeyId, me.id)
+
+    await repo.updateProjectJourney(data.journeyId, {
+      name: data.name,
+      goal: data.goal || data.name,
+      entryPath: data.entryPath,
+      priority: data.priority,
+      ...(data.enabled === undefined ? {} : { enabled: data.enabled }),
+    })
+
+    return { ok: true }
+  })
+
+export const removeProjectJourney = createServerFn({ method: 'POST' })
+  .validator(z.object({ journeyId: idSchema }))
+  .handler(async ({ data }) => {
+    const me = await user()
+    await repo.assertPlannedJourneyAccess(data.journeyId, me.id)
+    await repo.deleteProjectJourney(data.journeyId)
+    return { ok: true }
+  })
+
+/**
+ * Adds a value that is true of the target application.
+ *
+ * The agent invents what it types, and invented data is right up until the
+ * application checks it against itself - a form that looks a patient up by
+ * phone number will not find one for a number Forge made up. Never a
+ * credential: these are shown back in the console and written into evidence.
+ */
+export const addSampleValue = createServerFn({ method: 'POST' })
+  .validator(createSampleValueInputSchema)
+  .handler(async ({ data }): Promise<ProjectSampleValue> => {
+    const me = await user()
+    await repo.assertProjectAccess(data.projectId, me.id)
+    return repo.insertProjectSampleValue({
+      projectId: data.projectId,
+      label: data.label,
+      value: data.value,
+    })
+  })
+
+export const editSampleValue = createServerFn({ method: 'POST' })
+  .validator(updateSampleValueInputSchema)
+  .handler(async ({ data }) => {
+    const me = await user()
+    await repo.assertSampleValueAccess(data.sampleValueId, me.id)
+    await repo.updateProjectSampleValue(data.sampleValueId, {
+      label: data.label,
+      value: data.value,
+    })
+    return { ok: true }
+  })
+
+export const removeSampleValue = createServerFn({ method: 'POST' })
+  .validator(z.object({ sampleValueId: idSchema }))
+  .handler(async ({ data }) => {
+    const me = await user()
+    await repo.assertSampleValueAccess(data.sampleValueId, me.id)
+    await repo.deleteProjectSampleValue(data.sampleValueId)
+    return { ok: true }
+  })
+
 /**
  * Deletes a project and everything it produced.
  *
@@ -311,6 +411,8 @@ export type ProjectPayload = {
   runs: Run[]
   schedule: Schedule | null
   credentials: ProjectCredential[]
+  plannedJourneys: ProjectJourney[]
+  sampleValues: ProjectSampleValue[]
 }
 
 export const getProject = createServerFn({ method: 'GET' })
@@ -318,12 +420,15 @@ export const getProject = createServerFn({ method: 'GET' })
   .handler(async ({ data }): Promise<ProjectPayload> => {
     const me = await user()
     const project = await repo.assertProjectAccess(data.projectId, me.id)
-    const [runs, schedule, credentials] = await Promise.all([
-      repo.listRuns(project.id),
-      monitor.getSchedule(project.id),
-      repo.listProjectCredentials(project.id),
-    ])
-    return { project, runs, schedule, credentials }
+    const [runs, schedule, credentials, plannedJourneys, sampleValues] =
+      await Promise.all([
+        repo.listRuns(project.id),
+        monitor.getSchedule(project.id),
+        repo.listProjectCredentials(project.id),
+        repo.listProjectJourneys(project.id),
+        repo.listProjectSampleValues(project.id),
+      ])
+    return { project, runs, schedule, credentials, plannedJourneys, sampleValues }
   })
 
 export const updateProject = createServerFn({ method: 'POST' })
@@ -333,6 +438,9 @@ export const updateProject = createServerFn({ method: 'POST' })
     await repo.assertProjectAccess(data.projectId, me.id)
     await repo.updateProject(data.projectId, {
       previewUrlTemplate: data.previewUrlTemplate,
+      // Absent means "leave it": the preview pattern and the stated priority
+      // are edited from different places on the page.
+      ...(data.goal === undefined ? {} : { goal: data.goal }),
     })
     return repo.assertProjectAccess(data.projectId, me.id)
   })

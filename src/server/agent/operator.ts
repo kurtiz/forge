@@ -63,6 +63,59 @@ function syntheticDate(offsetDays = 14): string {
   return date.toISOString().slice(0, 10)
 }
 
+/**
+ * A value the project says is true of its own application.
+ *
+ * Invented data is right up until the application checks it against itself: a
+ * referral form that looks a patient up by phone number will never find one
+ * for a number Forge made up, and the journey stops at a submit button that
+ * will not enable. These are the values somebody who knows the application
+ * supplied so that it can.
+ */
+export type SampleValue = { label: string; value: string }
+
+/**
+ * The sample value for a field, if the project supplied one.
+ *
+ * Every word of the label has to appear in the field, so "Phone number"
+ * answers a field called "Phone number" or "Patient phone number" and not one
+ * called "Number of copies". The most specific label wins, which is how a
+ * project can give a general "Phone" and a particular "Referring phone" and
+ * have each land where it belongs.
+ */
+export function matchSampleValue(
+  element: PageElement,
+  samples: readonly SampleValue[],
+): string | null {
+  if (samples.length === 0) return null
+
+  const field = new Set(
+    `${element.name} ${element.inputType ?? ''}`
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)
+      .map(normaliseWord),
+  )
+  if (field.size === 0) return null
+
+  let best: { value: string; words: number } | null = null
+  for (const sample of samples) {
+    const words = sample.label
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)
+      .map(normaliseWord)
+
+    if (words.length === 0) continue
+    if (!words.every((word) => field.has(word))) continue
+    if (!best || words.length > best.words) {
+      best = { value: sample.value, words: words.length }
+    }
+  }
+
+  return best?.value ?? null
+}
+
 /** Synthetic values. Never real credentials, never production data. */
 function syntheticValue(element: PageElement): string {
   const hint = `${element.name} ${element.inputType ?? ''}`.toLowerCase()
@@ -439,9 +492,10 @@ export async function runJourney(
   baseUrl: string,
   journey: DiscoveredJourney,
   budget: Budget,
-  options: { authenticated?: boolean } = {},
+  options: { authenticated?: boolean; sampleValues?: readonly SampleValue[] } = {},
 ): Promise<JourneyRun> {
   const authenticated = options.authenticated ?? false
+  const sampleValues = options.sampleValues ?? []
   const steps: OperatorStep[] = []
   const trace: string[] = []
   const signal: FailureSignal = { consoleErrors: [], networkErrors: [] }
@@ -702,7 +756,12 @@ export async function runJourney(
     for (const field of fields.slice(0, 8)) {
       if (!budget.canSpend('browserActions')) break
       budget.spend('browserActions')
-      const value = syntheticValue(field)
+      /*
+       * What the project supplied beats what the agent can invent. A field
+       * with no sample falls back to a synthetic value, so a project only has
+       * to name the ones its application actually checks.
+       */
+      const value = matchSampleValue(field, sampleValues) ?? syntheticValue(field)
       const filled = await executor.fill(field.ref, value)
       touchedForm = true
 

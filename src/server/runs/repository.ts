@@ -17,6 +17,8 @@ import type {
   FailureClass,
   Finding,
   ProjectCredential,
+  ProjectJourney,
+  ProjectSampleValue,
   Journey,
   JourneyStatus,
   JsonValue,
@@ -241,6 +243,161 @@ export async function deleteProjectCredential(credentialId: string): Promise<voi
   await db()
     .delete(tables.projectCredentials)
     .where(eq(tables.projectCredentials.id, credentialId))
+}
+
+/* ------------------------------------------------------- the project's plan */
+
+const toPlannedJourney = (
+  r: typeof tables.projectJourneys.$inferSelect,
+): ProjectJourney => ({
+  id: r.id,
+  projectId: r.projectId,
+  name: r.name,
+  goal: r.goal,
+  entryPath: r.entryPath,
+  priority: r.priority,
+  enabled: r.enabled,
+  createdAt: r.createdAt,
+  updatedAt: r.updatedAt,
+})
+
+export async function listProjectJourneys(
+  projectId: string,
+): Promise<ProjectJourney[]> {
+  const rows = await db()
+    .select()
+    .from(tables.projectJourneys)
+    .where(eq(tables.projectJourneys.projectId, projectId))
+    .orderBy(desc(tables.projectJourneys.priority), tables.projectJourneys.createdAt)
+
+  return rows.map(toPlannedJourney)
+}
+
+export async function insertProjectJourney(input: {
+  projectId: string
+  name: string
+  goal: string
+  entryPath: string
+  priority: number
+  enabled: boolean
+}): Promise<ProjectJourney> {
+  const at = nowIso()
+  const [row] = await db()
+    .insert(tables.projectJourneys)
+    .values({ ...input, id: newId('pjy'), createdAt: at, updatedAt: at })
+    .returning()
+
+  return toPlannedJourney(row)
+}
+
+export async function updateProjectJourney(
+  journeyId: string,
+  patch: Partial<{
+    name: string
+    goal: string
+    entryPath: string
+    priority: number
+    enabled: boolean
+  }>,
+): Promise<void> {
+  if (Object.keys(patch).length === 0) return
+  await db()
+    .update(tables.projectJourneys)
+    .set({ ...patch, updatedAt: nowIso() })
+    .where(eq(tables.projectJourneys.id, journeyId))
+}
+
+export async function deleteProjectJourney(journeyId: string): Promise<void> {
+  await db()
+    .delete(tables.projectJourneys)
+    .where(eq(tables.projectJourneys.id, journeyId))
+}
+
+/** Ownership for a planned journey, through the project that holds it. */
+export async function assertPlannedJourneyAccess(
+  journeyId: string,
+  userId: string,
+): Promise<{ journey: ProjectJourney; project: Project }> {
+  const [row] = await db()
+    .select()
+    .from(tables.projectJourneys)
+    .where(eq(tables.projectJourneys.id, journeyId))
+    .limit(1)
+
+  if (!row) throw new NotFoundError('Journey')
+  const project = await assertProjectAccess(row.projectId, userId)
+  return { journey: toPlannedJourney(row), project }
+}
+
+const toSampleValue = (
+  r: typeof tables.projectSampleValues.$inferSelect,
+): ProjectSampleValue => ({
+  id: r.id,
+  projectId: r.projectId,
+  label: r.label,
+  value: r.value,
+  createdAt: r.createdAt,
+  updatedAt: r.updatedAt,
+})
+
+export async function listProjectSampleValues(
+  projectId: string,
+): Promise<ProjectSampleValue[]> {
+  const rows = await db()
+    .select()
+    .from(tables.projectSampleValues)
+    .where(eq(tables.projectSampleValues.projectId, projectId))
+    .orderBy(tables.projectSampleValues.createdAt)
+
+  return rows.map(toSampleValue)
+}
+
+export async function insertProjectSampleValue(input: {
+  projectId: string
+  label: string
+  value: string
+}): Promise<ProjectSampleValue> {
+  const at = nowIso()
+  const [row] = await db()
+    .insert(tables.projectSampleValues)
+    .values({ ...input, id: newId('psv'), createdAt: at, updatedAt: at })
+    .returning()
+
+  return toSampleValue(row)
+}
+
+export async function updateProjectSampleValue(
+  sampleValueId: string,
+  patch: Partial<{ label: string; value: string }>,
+): Promise<void> {
+  if (Object.keys(patch).length === 0) return
+  await db()
+    .update(tables.projectSampleValues)
+    .set({ ...patch, updatedAt: nowIso() })
+    .where(eq(tables.projectSampleValues.id, sampleValueId))
+}
+
+export async function deleteProjectSampleValue(
+  sampleValueId: string,
+): Promise<void> {
+  await db()
+    .delete(tables.projectSampleValues)
+    .where(eq(tables.projectSampleValues.id, sampleValueId))
+}
+
+export async function assertSampleValueAccess(
+  sampleValueId: string,
+  userId: string,
+): Promise<{ sampleValue: ProjectSampleValue; project: Project }> {
+  const [row] = await db()
+    .select()
+    .from(tables.projectSampleValues)
+    .where(eq(tables.projectSampleValues.id, sampleValueId))
+    .limit(1)
+
+  if (!row) throw new NotFoundError('Sample value')
+  const project = await assertProjectAccess(row.projectId, userId)
+  return { sampleValue: toSampleValue(row), project }
 }
 
 async function clearDefaultCredential(projectId: string): Promise<void> {

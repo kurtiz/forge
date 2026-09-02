@@ -296,6 +296,75 @@ export const runs = sqliteTable(
   ],
 )
 
+/* ------------------------------------------------------- the project's plan */
+
+/**
+ * Journeys the operator of a project named itself.
+ *
+ * Discovery is a good guess and a guess is what it stays: the same application
+ * can be read differently on two runs, and the journey somebody actually cares
+ * about is not always the one a model ranks first. A planned journey is run
+ * before any discovered one, at the priority given here, and is never
+ * re-invented under a different name.
+ *
+ * Not a replacement for discovery. A project with three planned journeys still
+ * gets the rest of its budget spent on what the Explorer finds, which is how a
+ * regression somewhere nobody thought to name is still caught.
+ */
+export const projectJourneys = sqliteTable(
+  'project_journeys',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    goal: text('goal').notNull(),
+    entryPath: text('entry_path').notNull().default('/'),
+    /** 0 to 1. How damaging it would be if this journey broke. */
+    priority: real('priority').notNull().default(0.5),
+    /** Off rather than deleted, so a journey can be rested for a run or two. */
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('project_journeys_project_idx').on(table.projectId, table.priority),
+  ],
+)
+
+/**
+ * Values that are true of the target application, for filling its forms.
+ *
+ * The agent invents what it types, and invented data is right up until the
+ * application checks it against itself: a referral form looks up a patient by
+ * phone number, and no number Forge can invent will find one. A sample value
+ * is the operator of the project saying "this one exists" - matched to a field
+ * by its label, and used in place of the synthetic value.
+ *
+ * Not a secret store. These are shown back in the UI and written into run
+ * evidence like any other typed value; credentials belong in
+ * `projectCredentials`, which is encrypted and never returned.
+ */
+export const projectSampleValues = sqliteTable(
+  'project_sample_values',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** The field this is for, as the form labels it: "Phone number". */
+    label: text('label').notNull(),
+    /** What to type into it: "0244123456". */
+    value: text('value').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('project_sample_values_project_idx').on(table.projectId, table.createdAt),
+  ],
+)
+
 /* --------------------------------------------------------------- journeys */
 
 export const journeys = sqliteTable(
@@ -474,6 +543,8 @@ export const projectRelations = relations(projects, ({ one, many }) => ({
   owner: one(user, { fields: [projects.userId], references: [user.id] }),
   runs: many(runs),
   credentials: many(projectCredentials),
+  plannedJourneys: many(projectJourneys),
+  sampleValues: many(projectSampleValues),
   schedule: one(schedules, {
     fields: [projects.id],
     references: [schedules.projectId],
@@ -513,6 +584,8 @@ export const schema = {
   verification,
   projects,
   projectCredentials,
+  projectJourneys,
+  projectSampleValues,
   runs,
   journeys,
   journeySteps,

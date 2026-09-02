@@ -13,6 +13,7 @@
 import {
   DEFAULT_BUDGET,
   type Classification,
+  type DiscoveredJourney,
   type JsonValue,
   type RunStatus,
 } from '../contracts'
@@ -31,7 +32,11 @@ import {
   type SourceInsight,
   type SourceInvestigator,
 } from '../investigation'
-import { discoverJourneys, HEURISTIC_REASON_TEXT } from '../agent/explorer'
+import {
+  discoverJourneys,
+  HEURISTIC_REASON_TEXT,
+  type ExplorationResult,
+} from '../agent/explorer'
 import { pathOf, signIn } from '../agent/authenticator'
 import { judgeFinding } from '../agent/judge'
 import { runJourney, type JourneyRun } from '../agent/operator'
@@ -381,26 +386,69 @@ export async function executeRun(
       return
     }
 
-    budget.spend('aiCalls')
-    const exploration = await discoverJourneys(
-      provider,
-      entry.observation,
-      input.goal,
-      budget.canSpend('browserActions', 20) ? DEFAULT_BUDGET.maxJourneys : 2,
-      { authenticated },
+    /*
+     * What the project asked for comes first.
+     *
+     * Discovery is a guess, and it is a different guess each run: the journey
+     * a team actually cares about can drop off the list because a model ranked
+     * a settings page higher this time. A planned journey runs every time, at
+     * the priority the project gave it, and takes the place of a discovered
+     * one rather than being added on top of it - the budget is the same either
+     * way, and spending it on what was asked for is the point.
+     */
+    const planned = (await repo.listProjectJourneys(input.projectId)).filter(
+      (journey) => journey.enabled,
     )
 
-    await emit(
-      'journeys.discovered',
-      exploration.reason
-        ? `Discovered ${exploration.journeys.length} journeys without a model: ${HEURISTIC_REASON_TEXT[exploration.reason]}. Journeys came from page heuristics, which are much weaker.`
-        : `Discovered ${exploration.journeys.length} journeys (${exploration.source})`,
-      {
-        source: exploration.source,
-        model: exploration.model,
-        reason: exploration.reason ?? null,
-      },
+    /*
+     * Values the project says are true of its own application, for filling its
+     * forms. Read once and handed to every journey: a form that looks a
+     * patient up by phone number needs a number that exists, and no number the
+     * agent invents will do.
+     */
+    const sampleValues = (await repo.listProjectSampleValues(input.projectId)).map(
+      (sample) => ({ label: sample.label, value: sample.value }),
     )
+    const maxJourneys = budget.canSpend('browserActions', 20)
+      ? DEFAULT_BUDGET.maxJourneys
+      : 2
+    const room = Math.max(0, maxJourneys - planned.length)
+
+    let exploration: ExplorationResult = {
+      journeys: [],
+      source: 'heuristic',
+      model: null,
+    }
+
+    if (room > 0) {
+      budget.spend('aiCalls')
+      exploration = await discoverJourneys(
+        provider,
+        entry.observation,
+        input.goal,
+        room,
+        { authenticated },
+      )
+
+      await emit(
+        'journeys.discovered',
+        exploration.reason
+          ? `Discovered ${exploration.journeys.length} journeys without a model: ${HEURISTIC_REASON_TEXT[exploration.reason]}. Journeys came from page heuristics, which are much weaker.`
+          : `Discovered ${exploration.journeys.length} journeys (${exploration.source})`,
+        {
+          source: exploration.source,
+          model: exploration.model,
+          reason: exploration.reason ?? null,
+        },
+      )
+    } else {
+      // The plan fills the run. Nothing is discovered, and no model is called.
+      await emit(
+        'journeys.discovered',
+        `Running ${planned.length} journeys from the project's plan.`,
+        { source: 'planned', model: null, reason: null },
+      )
+    }
 
     /*
      * The paths the application itself offered on the entry page.
@@ -419,8 +467,37 @@ export async function executeRun(
       }
     }
 
+    /*
+     * A path the project named counts as offered.
+     *
+     * The rule exists to stop a URL Forge invented from being reported as a
+     * broken link. A person typing the path into the plan is not Forge
+     * guessing: if it 404s, that is worth knowing about rather than excusing.
+     */
+    for (const journey of planned) offeredPaths.add(pathOf(journey.entryPath))
+
+    /*
+     * Planned first, then whatever discovery found that is not already in the
+     * plan. Matched on the name, so a journey the project named "Add referral"
+     * is not also run as the model's "Add a referral".
+     */
+    const plannedNames = new Set(
+      planned.map((journey) => journey.name.trim().toLowerCase()),
+    )
+    const chosen: DiscoveredJourney[] = [
+      ...planned.map((journey) => ({
+        name: journey.name,
+        goal: journey.goal,
+        entryPath: journey.entryPath,
+        priority: journey.priority,
+      })),
+      ...exploration.journeys.filter(
+        (journey) => !plannedNames.has(journey.name.trim().toLowerCase()),
+      ),
+    ].slice(0, maxJourneys)
+
     const journeys = []
-    for (const discovered of exploration.journeys) {
+    for (const discovered of chosen) {
       const journey = await repo.insertJourney({
         runId: input.runId,
         name: discovered.name,
@@ -468,7 +545,7 @@ export async function executeRun(
           input.targetUrl,
           journey.discovered,
           budget,
-          { authenticated },
+          { authenticated, sampleValues },
         )
       } catch (error) {
         if (error instanceof BudgetExceededError) {
@@ -602,7 +679,7 @@ export async function executeRun(
               input.targetUrl,
               failure.journey.discovered,
               budget,
-              { authenticated },
+              { authenticated, sampleValues },
             )
             // Only a repeat failure counts. A journey that could not be
             // attempted this time proves nothing either way.

@@ -16,6 +16,8 @@ import { RelativeTime } from '#/components/app/relative-time'
 import { ExecutorNotice } from '#/components/app/executor-notice'
 import { SchedulePanel } from '#/components/app/schedule-panel'
 import { CredentialsPanel } from '#/components/app/credentials-panel'
+import { JourneyPlanPanel } from '#/components/app/journey-plan-panel'
+import { SampleDataPanel } from '#/components/app/sample-data-panel'
 import {
   deleteProject,
   getProject,
@@ -32,13 +34,17 @@ export const Route = createFileRoute('/projects/$projectId')({
 })
 
 function ProjectPage() {
-  const { project, runs, schedule, credentials } = Route.useLoaderData()
+  const { project, runs, schedule, credentials, plannedJourneys, sampleValues } =
+    Route.useLoaderData()
   const { session } = Route.useRouteContext()
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [previewTemplate, setPreviewTemplate] = useState(
     project.previewUrlTemplate ?? '',
   )
+  /** The stated priority, editable in place. Empty clears it. */
+  const [goal, setGoal] = useState(project.goal ?? '')
+  const [editingGoal, setEditingGoal] = useState(false)
 
   async function run() {
     setBusy(true)
@@ -55,6 +61,13 @@ function ProjectPage() {
     await updateProject({
       data: { projectId: project.id, previewUrlTemplate: previewTemplate },
     })
+    await router.invalidate()
+  }
+
+  async function saveGoal() {
+    setEditingGoal(false)
+    if (goal.trim() === (project.goal ?? '')) return
+    await updateProject({ data: { projectId: project.id, goal } })
     await router.invalidate()
   }
 
@@ -99,12 +112,40 @@ function ProjectPage() {
                   </dd>
                 </div>
               ) : null}
-              {project.goal ? (
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-kumo-subtle">Priority</dt>
-                  <dd className="m-0">{project.goal}</dd>
-                </div>
-              ) : null}
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-kumo-subtle">Priority</dt>
+                <dd className="m-0 min-w-0 flex-1">
+                  {editingGoal ? (
+                    <Input
+                      aria-label="What matters most about this application"
+                      autoFocus
+                      placeholder="Customers must be able to check out with a coupon"
+                      value={goal}
+                      onChange={(e) => setGoal(e.currentTarget.value)}
+                      onBlur={saveGoal}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur()
+                        if (e.key === 'Escape') {
+                          setGoal(project.goal ?? '')
+                          setEditingGoal(false)
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingGoal(true)}
+                      className="cursor-text border-0 bg-transparent p-0 text-left text-inherit"
+                    >
+                      {project.goal ?? (
+                        <span className="text-kumo-subtle italic">
+                          What matters most about this application?
+                        </span>
+                      )}
+                    </button>
+                  )}
+                </dd>
+              </div>
             </dl>
           }
           actions={
@@ -130,6 +171,24 @@ function ProjectPage() {
         />
 
         <ExecutorNotice executor={session.executor} />
+
+        <Section
+          title="Journeys"
+          meta={
+            plannedJourneys.length > 0
+              ? `${plannedJourneys.length} planned`
+              : 'discovered each run'
+          }
+        >
+          <JourneyPlanPanel projectId={project.id} journeys={plannedJourneys} />
+        </Section>
+
+        <Section
+          title="Sample data"
+          meta={sampleValues.length > 0 ? `${sampleValues.length} values` : undefined}
+        >
+          <SampleDataPanel projectId={project.id} values={sampleValues} />
+        </Section>
 
         <Section
           title="Test accounts"

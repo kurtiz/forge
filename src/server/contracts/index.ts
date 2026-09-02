@@ -326,6 +326,105 @@ export const updateCredentialInputSchema = z.object({
 })
 export type UpdateCredentialInput = z.infer<typeof updateCredentialInputSchema>
 
+/* -------------------------------------------------- the project's own plan */
+
+/**
+ * A journey the operator of a project named, rather than one Forge guessed.
+ *
+ * Same shape as a discovered journey plus an identity and an on/off switch, so
+ * the run engine can hand it to the Operator without translating anything.
+ */
+export const projectJourneySchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  name: z.string(),
+  goal: z.string(),
+  entryPath: z.string(),
+  priority: z.number(),
+  enabled: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+export type ProjectJourney = z.infer<typeof projectJourneySchema>
+
+const journeyPlanFields = {
+  name: z.string().trim().min(2, 'Give the journey a name').max(80),
+  goal: z
+    .string()
+    .trim()
+    .max(300)
+    .optional()
+    .transform((v) => v ?? ''),
+  entryPath: z
+    .string()
+    .trim()
+    .max(300)
+    .optional()
+    .transform((v) => {
+      const path = (v ?? '').trim()
+      if (!path) return '/'
+      return path.startsWith('/') ? path : `/${path}`
+    }),
+  /**
+   * Clamped rather than rejected. This arrives from a slider, and a project
+   * that typed 1.4 into the API meant "the most important one", not an error.
+   */
+  priority: z
+    .number()
+    .optional()
+    .transform((v) => Math.max(0, Math.min(1, Number((v ?? 0.5).toFixed(2))))),
+  enabled: z.boolean().optional(),
+}
+
+export const createProjectJourneyInputSchema = z.object({
+  projectId: z.string().min(3).max(64),
+  ...journeyPlanFields,
+})
+export type CreateProjectJourneyInput = z.infer<
+  typeof createProjectJourneyInputSchema
+>
+
+export const updateProjectJourneyInputSchema = z.object({
+  journeyId: z.string().min(3).max(64),
+  ...journeyPlanFields,
+})
+export type UpdateProjectJourneyInput = z.infer<
+  typeof updateProjectJourneyInputSchema
+>
+
+/**
+ * A value that is true of the target application, for filling its forms.
+ *
+ * Never a credential. These are shown back in the console and written into run
+ * evidence like any other typed value.
+ */
+export const projectSampleValueSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  label: z.string(),
+  value: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+export type ProjectSampleValue = z.infer<typeof projectSampleValueSchema>
+
+const sampleValueFields = {
+  label: z.string().trim().min(2, 'Name the field this is for').max(80),
+  value: z.string().trim().min(1, 'Give a value to type').max(300),
+}
+
+export const createSampleValueInputSchema = z.object({
+  projectId: z.string().min(3).max(64),
+  ...sampleValueFields,
+})
+export type CreateSampleValueInput = z.infer<typeof createSampleValueInputSchema>
+
+export const updateSampleValueInputSchema = z.object({
+  sampleValueId: z.string().min(3).max(64),
+  ...sampleValueFields,
+})
+export type UpdateSampleValueInput = z.infer<typeof updateSampleValueInputSchema>
+
 export const createProjectInputSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(60),
   targetUrl: z.string().trim().min(1, 'Target URL is required'),
@@ -386,6 +485,18 @@ export const updateProjectInputSchema = z.object({
     .max(300)
     .optional()
     .transform((v) => (v ? v : null)),
+  /**
+   * What matters most about this application, in the project's own words. Set
+   * when the project is created and editable afterwards, because what a team
+   * cares about moves and the sentence that steers discovery should move with
+   * it. Absent means "leave it as it is"; empty means "clear it".
+   */
+  goal: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v || null)),
 })
 export type UpdateProjectInput = z.infer<typeof updateProjectInputSchema>
 

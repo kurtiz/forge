@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 import {
   chooseRevealed,
   findPrerequisiteControl,
+  matchSampleValue,
   revealedElements,
   runJourney,
 } from '#/server/agent/operator'
@@ -471,6 +472,59 @@ describe('typed fields', () => {
     // And the field is named as empty, from the page rather than from what the
     // agent remembers typing into it.
     expect(run.steps.at(-1)?.actual).toContain('Preferred date')
+  })
+})
+
+describe("values the project says are true of its application", () => {
+  const field = (name: string, inputType?: string): PageElement =>
+    element({ ref: 'f', role: 'input', name, inputType })
+
+  it('matches a field by every word of the label', () => {
+    const samples = [{ label: 'Phone number', value: '0244123456' }]
+    expect(matchSampleValue(field('Phone number'), samples)).toBe('0244123456')
+    expect(matchSampleValue(field('Patient phone number'), samples)).toBe('0244123456')
+    // "number" alone is not what this is for.
+    expect(matchSampleValue(field('Number of copies'), samples)).toBeNull()
+    expect(matchSampleValue(field('Clinical notes'), samples)).toBeNull()
+  })
+
+  it('lets the more specific label win', () => {
+    const samples = [
+      { label: 'Phone', value: '0000000000' },
+      { label: 'Referring phone', value: '0244123456' },
+    ]
+    expect(matchSampleValue(field('Referring phone'), samples)).toBe('0244123456')
+    expect(matchSampleValue(field('Patient phone'), samples)).toBe('0000000000')
+  })
+
+  it('is not defeated by a plural', () => {
+    expect(
+      matchSampleValue(field('Order numbers'), [
+        { label: 'Order number', value: 'ORD-4471' },
+      ]),
+    ).toBe('ORD-4471')
+  })
+
+  it('types the project value into the form instead of an invented one', async () => {
+    /*
+     * The failure this guards against: the referral form looks a patient up by
+     * phone number, no number Forge invents will find one, and the journey
+     * stops at a submit the application will not enable - correctly, and
+     * uselessly.
+     */
+    const executor = new ReferralFormExecutor()
+
+    await runJourney(
+      executor,
+      'https://app.example.com',
+      addReferral,
+      new Budget(DEFAULT_BUDGET),
+      { sampleValues: [{ label: 'Phone number', value: '0244123456' }] },
+    )
+
+    expect(executor.actions).toContain('fill phone=0244123456')
+    // Everything without a sample still gets a synthetic value.
+    expect(executor.actions).toContain('fill notes=Forge verification')
   })
 })
 
