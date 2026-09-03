@@ -718,3 +718,5 @@ Next, roughly in order:
   no model at all
 - [`docs/security-model.md`](docs/security-model.md) — the threats a system that
   points a browser at a stranger's URL actually has
+- [`docs/releasing.md`](docs/releasing.md) — how a commit message becomes a
+  versioned binary on a GitHub release
