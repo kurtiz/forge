@@ -522,13 +522,23 @@ then `FORGE_HOST`, then the `host` stored by `forge login --host <url>`. That
 is what points the same binary at a self-hosted deployment, a staging Worker,
 or `wrangler dev` on localhost.
 
-The CLI has no dependencies: Node's own fetch and about eight hundred lines,
-because a verification tool installed on every developer machine and CI runner
-should not bring a package tree with it. It polls the REST API rather than
-subscribing to the console's stream — a poll survives a buffering proxy, a
-sleeping laptop, and a CI runner that drops idle connections — writes progress
-to stderr and results to stdout so `--json | jq` works while the run is still
-going, and emits no colour when the stream is not a TTY or `NO_COLOR` is set.
+The CLI renders twice. On a terminal, [Ink](https://github.com/vadimdemedes/ink)
+draws a live panel: a spinner on the current phase, a bar that fills as journeys
+finish, each journey resolving to a tick or a cross as it lands, and the result
+in the same frame when the run ends. Everywhere else — a pipe, a file, a CI log,
+or `--json` — it prints plain lines with no escape sequences, because a view
+that redraws itself is thousands of control characters and no information once
+nothing is watching. Both renderers read the same summary, so they cannot
+disagree about what a run found.
+
+That is the CLI's only dependency, and it is a deliberate one: the panel is what
+a person watches for two minutes, and the plain lines are what a CI gate keeps.
+Everything else is Node's own fetch and about a thousand lines. It polls the
+REST API rather than subscribing to the console's stream — a poll survives a
+buffering proxy, a sleeping laptop, and a CI runner that drops idle connections
+— writes progress to stderr and results to stdout so `--json | jq` works while
+the run is still going, and emits no colour when the stream is not a TTY or
+`NO_COLOR` is set.
 
 ### REST API
 

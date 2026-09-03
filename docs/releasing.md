@@ -86,17 +86,24 @@ embedded, so a machine with no Node and no npm can run them:
 
 | File | |
 |---|---|
-| `forge-darwin-arm64` | ~61 MB |
-| `forge-darwin-x64` | ~66 MB |
-| `forge-linux-arm64` | ~89 MB |
-| `forge-linux-x64` | ~90 MB |
-| `forge-windows-x64.exe` | ~94 MB |
+| `forge-darwin-arm64` | ~60 MB |
+| `forge-darwin-x64` | ~67 MB |
+| `forge-linux-arm64` | ~78 MB |
+| `forge-linux-x64` | ~78 MB |
+| `forge-windows-x64.exe` | ~84 MB |
 
-`SHA256SUMS` ships alongside them, because verifying a 90 MB download before
+Sizes move with the Bun version the runner installs, so treat them as a scale
+rather than a promise.
+
+`SHA256SUMS` ships alongside them, because verifying an 80 MB download before
 putting it on your `PATH` should not require trusting the link it came from.
 
-Pull requests compile one target rather than five. Proving the binary builds and
-answers `--version` is what a pull request needs; the matrix is a release cost.
+Pull requests compile one target rather than five, and upload it as a workflow
+artifact rather than a release. Proving the binary builds and answers
+`--version` is what a pull request needs; the matrix is a release cost. That
+artifact is the host binary under its zipped size, so a ~90 MB executable shows
+up in the Actions UI as ~35 MB — the five-file table above is what a release
+carries, and a pull request never produces it.
 
 ## Workflows
 

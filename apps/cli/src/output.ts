@@ -1,11 +1,18 @@
 /**
- * Terminal output.
+ * Plain terminal output.
  *
- * Colour is applied only when the stream is a TTY and `NO_COLOR` is unset, so
- * piping the output into a file or a CI log produces clean text. Progress is
- * written to stderr and results to stdout, which is what makes
+ * This is what a CI log, a redirected stdout, and `--json` get. Colour is
+ * applied only when the stream is a TTY and `NO_COLOR` is unset, so piping the
+ * output into a file or a CI log produces clean text. Progress is written to
+ * stderr and results to stdout, which is what makes
  * `forge verify --json | jq` work while the run is still going.
+ *
+ * On an interactive terminal the same information is drawn by the Ink views in
+ * `ui/`. Both read the same `summarise()` result, so the two renderers cannot
+ * disagree about what a run found.
  */
+import { summarise, type Tone } from './summary.js'
+import type { Finding, RunReport } from './types.js'
 /** Written as an escape sequence so the source file stays printable. */
 const ESC = '\u001b['
 
@@ -26,6 +33,20 @@ export const blue = wrap('36')
 
 export const PASS = green('✓')
 export const FAIL = red('✗')
+
+const TONE: Record<Tone, (text: string) => string> = {
+  pass: green,
+  fail: red,
+  warn: yellow,
+  info: blue,
+}
+
+const GLYPH: Record<Tone, string> = {
+  pass: '✓',
+  fail: '✗',
+  warn: '!',
+  info: '›',
+}
 
 export function out(line = ''): void {
   process.stdout.write(`${line}\n`)
@@ -60,4 +81,72 @@ export function progress(): (message: string) => void {
 
 export function clearProgress(): void {
   if (process.stderr.isTTY) process.stderr.write(`\r${ESC}2K`)
+}
+
+/* ----------------------------------------------------------------- report */
+
+export function printReport(report: RunReport): void {
+  const summary = summarise(report)
+
+  if (summary.state !== 'complete') {
+    const mark = summary.state === 'canceled' ? yellow('Canceled') : FAIL
+    note(`${mark} ${summary.reason ?? ''}`)
+    note(dim(summary.url))
+    return
+  }
+
+  for (const row of summary.rows) {
+    out(`${TONE[row.tone](GLYPH[row.tone])} ${row.text}`)
+  }
+
+  if (summary.bugs.length > 0) {
+    out('')
+    out(bold(summary.bugs.length === 1 ? 'Finding' : 'Findings'))
+    for (const finding of summary.bugs) printFinding(finding)
+  }
+
+  if (summary.others.length > 0) {
+    out('')
+    out(
+      dim(
+        `${summary.others.length} further failure${summary.others.length === 1 ? '' : 's'} classified as flaky or environmental:`,
+      ),
+    )
+    for (const finding of summary.others) {
+      out(dim(`  ${finding.title} (${finding.classification})`))
+    }
+  }
+
+  out('')
+  // The count is already implied by the findings above, so only a clean or an
+  // unexercised run needs its verdict spelled out.
+  if (summary.verdict && summary.bugs.length === 0) {
+    out(TONE[summary.verdict.tone](summary.verdict.text))
+  }
+  out(dim('View:'))
+  out(summary.url)
+  if (summary.replayUrl) {
+    out(dim('Replay:'))
+    out(summary.replayUrl)
+  }
+}
+
+function printFinding(finding: Finding): void {
+  const severity =
+    finding.severity === 'critical' || finding.severity === 'high'
+      ? red(finding.severity)
+      : yellow(finding.severity)
+
+  out(`  ${severity}  ${bold(finding.title)}`)
+  if (finding.reproductionAttempts > 0) {
+    out(
+      dim(
+        `    reproduced ${finding.reproductionFailures}/${finding.reproductionAttempts} times`,
+      ),
+    )
+  }
+  if (finding.rootCause) out(dim(`    ${finding.rootCause}`))
+  for (const file of finding.affectedFiles.slice(0, 3)) {
+    out(dim(`    ${file}`))
+  }
 }

@@ -4,12 +4,18 @@
   "description": "Verify a deployed web application from your terminal. AI writes the code. Forge proves it works.",
   "type": "module",
   "private": true,
-  "bin": { "forge": "./dist/index.js" },
-  "files": ["dist"],
-  "engines": { "node": ">=20" },
+  "bin": {
+    "forge": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "pnpm sync-version && tsc -p .",
-    "compile": "pnpm sync-version && bun build src/index.ts --compile --minify --sourcemap --outfile bin/forge",
+    "compile": "pnpm sync-version && bun build src/index.ts --compile --minify --sourcemap --define process.env.DEV=\"false\" --outfile bin/forge",
     "compile:all": "pnpm sync-version && node scripts/compile.mjs",
     "sync-version": "node scripts/sync-version.mjs",
     "check-version": "node scripts/sync-version.mjs --check",
@@ -17,6 +23,12 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "@types/react": "^19.2.18",
+    "react-devtools-core": "^7.0.1",
     "typescript": "^6.0.2"
+  },
+  "dependencies": {
+    "ink": "^7.1.1",
+    "react": "^19.2.8"
   }
 }

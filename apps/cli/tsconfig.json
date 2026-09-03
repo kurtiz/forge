@@ -8,6 +8,8 @@
     "lib": ["ES2023"],
     /* Node only: the CLI has no DOM and must not accidentally use one. */
     "types": ["node"],
+    /* Ink is React, so the views compile through the automatic JSX runtime. */
+    "jsx": "react-jsx",
     "outDir": "dist",
     "rootDir": "src",
     "declaration": false,
