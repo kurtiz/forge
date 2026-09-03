@@ -9,7 +9,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-export const DEFAULT_HOST = 'https://forge.dev'
+export const DEFAULT_HOST = 'https://forge.papiliocurtis.workers.dev'
 
 export type Config = { host: string; token: string }
 

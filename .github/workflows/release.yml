@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Two runs racing here would open competing Version Packages pull requests, or
+# cut the same release twice. Never cancel one: a half-finished release job is
+# worse than a slow queue.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Tegami reads conventional commits since the last release tag.
+          fetch-depth: 0
+
+      # Pinned here rather than in a "packageManager" field, because that field
+      # also pins every local pnpm: pnpm refuses to run when the installed
+      # version disagrees with it. CI wants one fixed version, a laptop does not.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Opens or updates the "Version Packages" pull request when there are
+      # unreleased conventional commits or .tegami/*.md changelog files. When
+      # there is nothing pending it does nothing, and the release job below
+      # decides whether the merged version still needs cutting.
+      - name: Version packages
+        run: pnpm tegami ci
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  release:
+    name: Release
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The version on main is the source of truth. If no tag points at it, the
+      # Version Packages pull request has just merged and this is the release.
+      # If a tag exists, this push was something else and there is nothing to do.
+      - name: Decide whether to release
+        id: decide
+        run: |
+          version=$(node -p "require('./apps/cli/package.json').version")
+          tag="@forge/cli@$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag is already released."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing $tag."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v6
+        if: steps.decide.outputs.release == 'true'
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        if: steps.decide.outputs.release == 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.decide.outputs.release == 'true'
+
+      - run: pnpm install --frozen-lockfile
+        if: steps.decide.outputs.release == 'true'
+
+      - name: Compile every target
+        if: steps.decide.outputs.release == 'true'
+        run: pnpm run compile:cli:all
+
+      # A checksum file is what lets someone verify a 90 MB download they are
+      # about to put on their PATH.
+      - name: Checksum the binaries
+        if: steps.decide.outputs.release == 'true'
+        working-directory: apps/cli/bin
+        run: |
+          rm -f index.js.map
+          sha256sum forge-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Write release notes
+        if: steps.decide.outputs.release == 'true'
+        run: |
+          node apps/cli/scripts/release-notes.mjs "${{ steps.decide.outputs.version }}" > /tmp/notes.md
+          cat /tmp/notes.md
+
+      # gh creates the tag at this commit, so there is no separate tag push.
+      - name: Create the GitHub release
+        if: steps.decide.outputs.release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.decide.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --title "forge ${{ steps.decide.outputs.version }}" \
+            --notes-file /tmp/notes.md \
+            apps/cli/bin/forge-* \
+            apps/cli/bin/SHA256SUMS

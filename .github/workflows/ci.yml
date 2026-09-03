@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned here rather than in a "packageManager" field, because that field
+      # also pins every local pnpm: pnpm refuses to run when the installed
+      # version disagrees with it. CI wants one fixed version, a laptop does not.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Fails the pull request if package.json and src/version.ts disagree,
+      # which is the one way the released binary could report a wrong version.
+      - name: Check the CLI version is in sync
+        run: pnpm --filter @forge/cli check-version
+
+      - name: Typecheck, test, and build
+        run: pnpm run check
+
+  cli:
+    name: Compile the CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: pnpm install --frozen-lockfile
+
+      # One target only. Proving the binary builds and runs is what matters on
+      # a pull request; the other four are built when a release is cut.
+      - name: Compile
+        run: pnpm run compile:cli
+
+      - name: Run it
+        run: |
+          ./apps/cli/bin/forge --version
+          ./apps/cli/bin/forge --help > /dev/null
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: forge-linux-x64
+          path: apps/cli/bin/forge
+          retention-days: 7
