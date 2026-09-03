@@ -650,6 +650,14 @@ Notifications go to a webhook on the transitions that matter: the first
 failure, the recovery, and every fourth consecutive failure after that. Steady
 green says nothing, and a week-long outage does not produce a week of alerts.
 
+The payload carries what to do about it, not only what happened. `text` — what
+a chat client renders — leads with the project, the summary, and one **How to
+fix** line with a link to the finding; the JSON adds a `remediation` object
+with the owner, the steps, and the coding-agent prompt, for a webhook that
+feeds something able to act on it. Without that, an alert about a target
+answering a bot challenge says "nothing was verified" and leaves whoever is on
+call with no next step.
+
 ---
 
 ## Security
@@ -768,5 +776,7 @@ Next, roughly in order:
   no model at all
 - [`docs/security-model.md`](docs/security-model.md) — the threats a system that
   points a browser at a stranger's URL actually has
+- [`docs/bot-protection.md`](docs/bot-protection.md) — what happens when the
+  target challenges the verifier, and how to let it through per service
 - [`docs/releasing.md`](docs/releasing.md) — how a commit message becomes a
   versioned binary on a GitHub release

@@ -153,6 +153,65 @@ describe('remediationFor a bot challenge', () => {
     )
   })
 
+  it('gives the dashboard path, because most edge config was never in a repo', () => {
+    // "It is not in version control" is a true answer that leaves the reader
+    // exactly where they started.
+    const remediation = challenge(['X-Forge-Verify'])
+    expect(remediation.steps.join(' ')).toContain('Cloudflare dashboard')
+    expect(remediation.prompt).toContain('do not stop there')
+    expect(remediation.prompt).toContain('Security → WAF → Custom rules')
+  })
+
+  it('names the console for whichever service answered', () => {
+    const aws = remediationFor(
+      input({
+        finding: {
+          ...blocked,
+          title: 'AWS WAF bot protection blocked the run',
+          description: 'AWS WAF answered app.example.com with a bot challenge.',
+        },
+        journey: null,
+        steps: [],
+      }),
+    )
+    expect(aws.steps.join(' ')).toContain('Web ACLs')
+  })
+
+  it('points at the code when the challenge is the application own widget', () => {
+    // A reCAPTCHA is rendered by our own code, so there is no edge rule to
+    // write and no infrastructure team to send the reader to.
+    const app = remediationFor(
+      input({
+        finding: {
+          ...blocked,
+          title: 'reCAPTCHA blocked the run',
+          description: "reCAPTCHA answered app.example.com with \"I'm not a robot\".",
+        },
+        journey: null,
+        steps: [],
+      }),
+    )
+    expect(app.owner).toBe('application')
+    expect(app.steps.join(' ')).toContain('in your own application')
+    expect(app.prompt).toContain('a code change is expected here')
+  })
+
+  it('offers a host bypass secret when nobody is named', () => {
+    const unknown = remediationFor(
+      input({
+        finding: {
+          ...blocked,
+          title: 'Bot protection blocked the run',
+          description: 'A bot-protection service answered app.example.com with a challenge.',
+        },
+        journey: null,
+        steps: [],
+      }),
+    )
+    expect(unknown.steps.join(' ')).toContain('deployment-protection')
+    expect(unknown.prompt).toContain('protection bypass for automation')
+  })
+
   it('refuses an allowlist a stranger could also satisfy', () => {
     // A user agent or a path is not a secret; a rule keyed on one lets every
     // scraper through the door it just opened.

@@ -213,8 +213,9 @@ beacon and third-party subresource the page loads.
 with the headers the transport and the session own (`Host`, `Cookie`,
 `Content-Length`, the hop-by-hop set, and the `Sec-`/`Proxy-` prefixes). Values
 carrying CR, LF, or control characters are refused: that is request splitting.
-Forge identifies itself honestly and does not try to pass for a human browser —
-see the note on bot challenges in the README.
+Forge identifies itself honestly and does not try to pass for a human browser.
+See [`bot-protection.md`](bot-protection.md) for the whole mechanism, including
+where the matching rule goes for each service.
 
 ## Testing against real applications
 

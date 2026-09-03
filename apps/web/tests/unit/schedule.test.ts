@@ -93,6 +93,43 @@ describe('notificationText', () => {
     expect(text).toContain('https://forge.dev/runs/run_abc')
   })
 
+  it('says what to do, not only what happened', () => {
+    // An alert nobody can act on at 03:00 is an alert that gets muted. The
+    // headline and the finding link are the whole point of a monitor firing
+    // about a target that verified nothing at all.
+    const text = notificationText({
+      reason: 'first_failure',
+      projectName: 'Northbeam',
+      targetUrl: 'https://northbeam.example.com',
+      summary:
+        'A bot-protection challenge answered every request, so nothing in the application was verified.',
+      runUrl: 'https://forge.dev/runs/run_abc',
+      consecutiveFailures: 1,
+      fix: {
+        headline: 'Give Forge a verification header, then let it through Cloudflare.',
+        url: 'https://forge.dev/findings/fnd_abc',
+      },
+    })
+
+    expect(text).toContain('How to fix: Give Forge a verification header')
+    expect(text).toContain('https://forge.dev/findings/fnd_abc')
+    // The run link stays last: it is where the reader ends up either way.
+    expect(text.trimEnd().endsWith('https://forge.dev/runs/run_abc')).toBe(true)
+  })
+
+  it('carries no fix line when there is nothing to fix', () => {
+    const text = notificationText({
+      reason: 'recovered',
+      projectName: 'Northbeam',
+      targetUrl: 'https://northbeam.example.com',
+      summary: '6 of 6 journeys passed. No failures detected.',
+      runUrl: 'https://forge.dev/runs/run_abc',
+      consecutiveFailures: 0,
+    })
+
+    expect(text).not.toContain('How to fix')
+  })
+
   it('says how long something has been failing', () => {
     expect(
       notificationText({

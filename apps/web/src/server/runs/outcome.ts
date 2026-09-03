@@ -10,11 +10,17 @@
  * when the engine throws or the user cancels, which is exactly the shape of the
  * Durable Object's `finally`.
  */
-import type { Run, ScheduleOutcome } from '@/server/contracts'
+import type {
+  Finding,
+  Run,
+  RunRemediation,
+  ScheduleOutcome,
+} from '@/server/contracts'
 import { concludeCheckRun, renderCheckReport } from '@/server/github/checks'
 import { githubConfigured } from '@/server/github/app'
 import * as monitor from '@/server/monitoring/repository'
 import { notificationText, shouldNotify } from '@/server/monitoring/schedule'
+import { remediationFor } from '@/server/domain/remediation'
 import { assertSafeTargetUrl } from '@/server/security'
 import { env } from 'cloudflare:workers'
 import * as repo from './repository'
@@ -102,6 +108,16 @@ async function publishSchedule(run: Run, projectName: string): Promise<void> {
   })
   if (!decision.notify || !schedule.notifyUrl) return
 
+  /*
+   * The fix instructions for the finding that decided this tick.
+   *
+   * A monitor exists to be read by whoever is not looking at the console, so
+   * the alert has to carry more than "nothing was verified". The headline and
+   * the finding link go in the text a chat client renders; the steps and the
+   * agent brief go in the JSON, for a webhook that does something with them.
+   */
+  const remediation = await leadingRemediation(run, findings)
+
   await notify(schedule.notifyUrl, {
     text: notificationText({
       reason: decision.reason,
@@ -110,6 +126,9 @@ async function publishSchedule(run: Run, projectName: string): Promise<void> {
       summary: run.summary ?? 'The run did not complete.',
       runUrl: consoleUrl(`/runs/${run.id}`),
       consecutiveFailures,
+      fix: remediation
+        ? { headline: remediation.headline, url: remediation.findingUrl }
+        : null,
     }),
     project: projectName,
     outcome,
@@ -119,7 +138,52 @@ async function publishSchedule(run: Run, projectName: string): Promise<void> {
     findings: findings
       .filter((f) => f.classification === 'confirmed_bug')
       .map((f) => ({ title: f.title, severity: f.severity })),
+    remediation,
   })
+}
+
+/**
+ * What to do about the finding that decided the tick, or nothing.
+ *
+ * A confirmed defect first, and otherwise whatever else was recorded - because
+ * the finding a monitor most needs to explain is often the one classified
+ * `environment`. A tick blocked by bot protection verified nothing at all, and
+ * an alert that only says so leaves the reader with no next step.
+ */
+async function leadingRemediation(
+  run: Run,
+  findings: Finding[],
+): Promise<RunRemediation | null> {
+  const finding =
+    findings.find((f) => f.classification === 'confirmed_bug') ?? findings[0]
+  if (!finding) return null
+
+  const [journeys, steps, headers] = await Promise.all([
+    repo.listJourneys(run.id),
+    repo.listJourneySteps(run.id),
+    repo.listProjectHeaders(run.projectId),
+  ])
+
+  const journey = journeys.find((j) => j.id === finding.journeyId) ?? null
+
+  const remediation = remediationFor({
+    finding,
+    run: { targetUrl: run.targetUrl, executor: run.executor },
+    journey: journey
+      ? { name: journey.name, goal: journey.goal, entryPath: journey.entryPath }
+      : null,
+    steps: steps.filter((s) => s.journeyId === finding.journeyId),
+    verificationHeaders: headers.map((header) => header.name),
+  })
+
+  return {
+    findingId: finding.id,
+    findingUrl: consoleUrl(`/findings/${finding.id}`),
+    headline: remediation.headline,
+    owner: remediation.owner,
+    steps: remediation.steps,
+    prompt: remediation.prompt,
+  }
 }
 
 /**

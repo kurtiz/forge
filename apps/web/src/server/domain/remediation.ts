@@ -20,7 +20,11 @@
  * it says the same thing every time and can be tested.
  */
 import type { FailureClass, Severity } from '@/server/contracts'
-import { CHALLENGE_VENDOR_LABEL, vendorFromText } from './challenge'
+import {
+  CHALLENGE_VENDOR_LABEL,
+  vendorFromText,
+  type ChallengeVendor,
+} from './challenge'
 
 export type RemediationStep = {
   action: string
@@ -155,18 +159,23 @@ function botChallenge(input: RemediationInput): Remediation {
     ? `Forge already sends ${headerList} on every request it makes to ${host}, so there is a secret to match.`
     : `Forge sends no verification header for this project yet. Add one first (project page, "Request headers"), because a rule keyed on a header is the only allowlist here that a stranger cannot also satisfy.`
 
+  const consolePath = CONSOLE_PATH[vendorKey]
+  const inCode = isApplicationLevel(vendorKey)
+
   return {
     headline: configured
       ? `Let Forge through with a rule that matches ${headerList}, or point it at an origin ${vendor} does not challenge.`
       : `Give Forge a verification header, then let that header through ${vendor} - or point it at an origin that does not challenge it.`,
-    owner: 'infrastructure',
+    owner: inCode ? 'application' : 'infrastructure',
     steps: [
       `Confirm the challenge yourself: request ${host} with no browser session and look at what comes back.`,
       'Consider a different target first. A preview or staging hostname without bot protection needs no rule at all, and keeps production untouched.',
       configured
-        ? `Otherwise add one rule at the edge, scoped to ${host}, that skips the challenge for requests carrying ${headerList} with the value this project stores.`
-        : `Otherwise add one under "Request headers" on this project - any name, a long random value - and then one rule at the edge, scoped to ${host}, that skips the challenge for requests carrying it.`,
-      'Keep the rule narrow: this hostname, the paths under verification, skip the challenge and nothing else. Rotate the value like any other secret.',
+        ? `Otherwise let ${headerList} through, with the value this project stores. ${consolePath}`
+        : `Otherwise add one under "Request headers" on this project - any name, a long random value - and then let that header through. ${consolePath}`,
+      inCode
+        ? 'Keep it narrow: preview hostnames only, and never a path that reaches production. Rotate the value like any other secret.'
+        : 'Keep the rule narrow: this hostname, the paths under verification, skip the challenge and nothing else. Rotate the value like any other secret.',
       'Re-run the verification. A run that got through discovers journeys from your own pages instead of from the challenge screen.',
     ],
     prompt: [
@@ -179,24 +188,65 @@ function botChallenge(input: RemediationInput): Remediation {
       `Observed: ${oneLine(input.finding.description)}`,
       '',
       section('What I want you to do', [
-        `1. Find where bot protection is configured for ${host} in this repository - infrastructure-as-code, edge config, a WAF or firewall rule set, a framework middleware. Tell me which file owns it. If it is configured outside the repo, say that instead of guessing.`,
-        '2. Check whether we already have an environment without this protection (a preview or staging deployment). If we do, say so: pointing the verification at that hostname is simpler than any rule, and I want to weigh it first.',
+        `1. Work out where this protection is configured for ${host}. Look in the repository first - infrastructure-as-code, edge config, a WAF or firewall rule set, framework middleware - and name the file if you find one.`,
+        `2. If it is not in the repository, do not stop there: it is almost certainly a dashboard setting. Say so, and give me the exact path to it and the fields to fill. For reference, this is where it usually lives for this service: ${consolePath}`,
+        '3. Check whether we already have an environment without this protection (a preview or staging deployment). If we do, say so: pointing the verification at that hostname is simpler than any rule, and I want to weigh it first.',
         configured
-          ? `3. Otherwise write one rule that skips the challenge for requests to ${host} carrying the header ${headerList}. Match on the header name AND its exact value - the value is a secret we hold, not a marker anyone can copy. Keep it in version control, not a dashboard click.`
-          : `3. Otherwise write one rule that skips the challenge for requests to ${host} carrying a named header with a secret value. Tell me the header name to use and where its value should be stored; I will set the same pair on the verification project. Keep the rule in version control, not a dashboard click.`,
-        '4. Scope it as tightly as it can be: this hostname, the paths under verification, skipping the bot challenge only. It must not disable other protections, and it must not apply to any other hostname.',
-        '5. State the trade-off in plain words: what that rule stops protecting, and what happens if the secret leaks. Tell me how to rotate it.',
-        '6. Give me a command I can run to verify the fix - a request with the header that returns our own HTML, and one without it that still gets the challenge.',
+          ? `4. Otherwise define one rule that lets requests to ${host} carrying the header ${headerList} through the challenge. Match on the header name AND its exact value - the value is a secret we hold, not a marker anyone can copy. Prefer a change we keep in version control; where the service only offers a dashboard, give me the click path and the exact expression to paste.`
+          : `4. Otherwise define one rule that lets requests to ${host} carrying a named header with a secret value through the challenge. Tell me the header name to use and where its value should be stored; I will set the same pair on the verification project. Prefer a change we keep in version control; where the service only offers a dashboard, give me the click path and the exact expression to paste.`,
+        '5. Make sure it is evaluated before whatever issues the challenge, and scope it as tightly as it can be: this hostname, the paths under verification, that challenge only. It must not disable other protections, and it must not apply to any other hostname.',
+        '6. State the trade-off in plain words: what that rule stops protecting, and what happens if the secret leaks. Tell me how to rotate it.',
+        '7. Give me a command I can run to verify the fix - a request with the header that returns our own HTML, and one without it that still gets the challenge.',
       ]),
       '',
       section('Rules', [
         '- Do not attempt to solve, bypass, or automate past the challenge. No CAPTCHA solvers, no stealth or fingerprint-spoofing browser flags, no rotating user agents. If that is the only path you can find, stop and tell me.',
         '- Do not key the rule on anything a stranger can also send. A user agent, an IP range we do not control, or a path is not a secret.',
         '- Do not disable bot protection globally, and do not weaken it on a hostname that serves real users or real data.',
-        '- Change configuration only. This finding is not evidence of any defect in the application code.',
+        inCode
+          ? '- This challenge is rendered by our own code, so a code change is expected here - but only to gate the widget by environment. Do not remove it, and do not weaken it in production.'
+          : '- Change configuration only. This finding is not evidence of any defect in the application code.',
       ]),
     ].join('\n'),
   }
+}
+
+/**
+ * Where the rule actually gets written, per service.
+ *
+ * The first version of this told an agent to find the configuration in the
+ * repository and to say so if it was not there. That is a dead end: most edge
+ * protection is a dashboard setting and has never been in anybody's
+ * repository, so the honest answer - "it is not in version control" - left the
+ * reader exactly where they started. These are the click paths, so that answer
+ * becomes a place to go rather than a shrug.
+ *
+ * Kept short and structural. A menu label may be renamed by the vendor next
+ * quarter; the shape of the thing to look for - a rule that runs before the
+ * challenge, matching a header, whose action is skip or allow - will not be.
+ */
+const CONSOLE_PATH: Record<ChallengeVendor, string> = {
+  cloudflare:
+    'Cloudflare dashboard → your zone → Security → WAF → Custom rules: a rule whose action is Skip, ticking the components that issue the challenge (Super Bot Fight Mode, managed rules), ordered above whatever is challenging. Plain Bot Fight Mode cannot be exempted by a custom rule, so check which product is challenging before writing one.',
+  'aws-waf':
+    'AWS console → WAF & Shield → Web ACLs → your ACL → Rules: a custom rule matching the header, action Allow, at a lower priority number than the bot-control or challenge rule so it is evaluated first.',
+  akamai:
+    'Akamai Control Center → Security → your security configuration → Bot Manager: an exception, or a bypass match target, for requests carrying the header.',
+  imperva:
+    'Imperva Cloud WAF console → your site → Security → Bot Access Control: an allow rule for requests carrying the header, above the challenge policy.',
+  datadome:
+    'DataDome dashboard → Management → Custom rules: an allow rule matching the header, so those requests are never scored.',
+  recaptcha:
+    'This one is in your own application rather than at an edge - your code renders the widget. Gate it on the header in preview environments only, never in production.',
+  hcaptcha:
+    'This one is in your own application rather than at an edge - your code renders the widget. Gate it on the header in preview environments only, never in production.',
+  unknown:
+    "Wherever the protection in front of this hostname lives: your CDN or host's firewall, bot-management, or deployment-protection settings. Some hosts publish a bypass secret for exactly this case - Vercel's protection bypass for automation, for one - and if yours does, use its documented header name and value here instead of inventing one.",
+}
+
+/** Whether the challenge is the application's own code rather than an edge. */
+function isApplicationLevel(vendor: ChallengeVendor): boolean {
+  return vendor === 'recaptcha' || vendor === 'hcaptcha'
 }
 
 function authFailure(input: RemediationInput): Remediation {
