@@ -1,3 +1,72 @@
+## @forge/cli@0.4.0
+
+### Install the CLI without a dependency tree
+
+`dist/` is now bundled rather than emitted a file per module, so the package
+carries what it actually reaches and declares no runtime dependencies. Installing
+it went from 23 MB across 38 packages to a 178 kB tarball and nine files, most of
+that saved by es-toolkit, which Ink depends on and which is 18 MB on its own.
+
+Startup is unchanged. `verify` and `projects` are the only commands that draw a
+terminal panel, and they are still loaded on demand: the entry stays at 9 kB, so
+`--version`, `--help`, and the plain CI renderer never parse a UI framework to
+print a line of text.
+
+### Stop shipping React DevTools inside the released binaries
+
+Ink loads a DevTools client behind a `DEV` environment check that a released
+build can never satisfy, but the bundler still had to resolve what was inside the
+branch, so react-devtools-core and a WebSocket client were compiled into every
+binary. The build was passing `--define process.env.DEV="false"` to collapse the
+branch, which does not work: Bun rewrites only the dotted form and Ink reads
+`process.env['DEV']`.
+
+The module is emptied at build time instead, and the build now fails if the
+DevTools client reaches an output or if the replacement stops matching, rather
+than shipping it silently the way the previous attempt did.
+
+### Bundle dist and keep DevTools out of released builds
+
+`tsc -p .` emitted a faithful file per module and left every dependency to
+be resolved at install time, so a 120 KB dist/ cost 23 MB across 38
+packages to install. Ink brings React, a reconciler, Yoga, and es-toolkit,
+which is 18 MB on its own. scripts/build.mjs bundles instead: 178 kB
+packed, nine files, no runtime dependencies.
+
+It bundles with splitting rather than to one file. index.ts imports the
+Ink views dynamically so that --version, --help, and the plain CI
+renderer -- most of the runs -- never parse a UI framework. A single-file
+bundle inlines that import and undoes it, measured at 33 ms to 55 ms of
+startup. Split, the entry stays 9 KB and startup does not move.
+
+Sourcemaps are dropped from dist/. They cost 2.0 MB against a 508 KB
+bundle, 1.8 MB of it mapping Ink and React, and nothing reads them: the
+CLI reports failures through fatal(), which prints error.message, so no
+stack trace ever reaches a user to be mapped.
+
+The DevTools exclusion never worked. Ink guards the import with
+process.env['DEV'], Bun's --define rewrites only the dotted form, so the
+branch survived and react-devtools-core shipped in every binary -- along
+with a full `ws` client, which ink/build/devtools.js imports separately to
+probe for a DevTools server. Stubbing Ink's devtools module takes out both
+in one interception and leaves `ws` alone elsewhere. Binaries drop 0.6 MB;
+dist/ drops 48 KB.
+
+That the previous attempt failed silently is the reason for the check that
+replaces it. assertStripped fails a build whose output still contains the
+DevTools probe address, and fails one where the replacement matched
+nothing, which is how Ink moving the file would otherwise go unnoticed.
+
+Bundling and stubbing both need a resolver plugin, which `bun build` has
+no flag for, so compile.mjs drives Bun.build rather than spawning the CLI.
+Bun is now needed to build the npm package and not only to compile a
+binary, so CI's check job installs it.
+
+Nothing here shrinks a binary meaningfully: 60.5 MB of the 62 MB is the
+Bun runtime, and Bun is already the smallest of the options at hand --
+Deno's floor is 82 MB and Node's SEA is 116 MB. Compressing the release
+artifacts is what moves that number, and it is the installer's job.
+
 ## @forge/cli@0.3.0
 
 ### Keep commit trailers out of published release notes
