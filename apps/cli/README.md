@@ -93,6 +93,22 @@ because a compiled binary has no manifest to consult at runtime. The builds
 regenerate it and CI fails a pull request where the two have drifted, so it
 should never need editing by hand.
 
+## Two renderers
+
+On a terminal the run is drawn as a live Ink panel: a spinner on the current
+phase, a bar that fills as journeys finish, each journey resolving to a tick or
+a cross, and the result in the same frame when it ends.
+
+Everywhere else — a pipe, a file, a CI log, `--json`, or `NO_COLOR` — it prints
+plain lines with no escape sequences. A panel that redraws itself is thousands
+of control characters and no information once nothing is watching it, and this
+CLI's main job is being a CI gate.
+
+Both read the same `summarise()` result in `src/summary.ts`, so the two cannot
+disagree about what a run found. `react-devtools-core` is a devDependency only
+because Bun resolves Ink's import of it while bundling; `--define
+process.env.DEV="false"` kills that branch, so it never reaches the binary.
+
 ## Exit codes
 
 | Code | Meaning |
