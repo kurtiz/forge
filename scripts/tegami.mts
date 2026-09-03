@@ -12,14 +12,17 @@
  * release. Dropping `private` from the package manifest is what turns npm
  * publishing on later -- no change is needed here.
  */
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-import { tegami, type LogGenerator, type TegamiPlugin } from 'tegami'
-import { runCli } from 'tegami/cli'
-import { simpleGenerator } from 'tegami/generators/simple'
-import { github } from 'tegami/plugins/github'
 
-const run = promisify(execFile)
+// @ts-ignore
+import { execFile } from "node:child_process";
+// @ts-ignore
+import { promisify } from "node:util";
+import { type LogGenerator, tegami, type TegamiPlugin } from "tegami";
+import { runCli } from "tegami/cli";
+import { simpleGenerator } from "tegami/generators/simple";
+import { github } from "tegami/plugins/github";
+
+const run = promisify(execFile);
 
 /**
  * Writes the new version into the CLI's source after a version is applied.
@@ -31,13 +34,13 @@ const run = promisify(execFile)
  */
 function syncCliVersion(): TegamiPlugin {
   return {
-    name: 'forge:sync-cli-version',
+    name: "forge:sync-cli-version",
     async applyCliDraft() {
-      await run('node', ['scripts/sync-version.mjs'], {
-        cwd: new URL('../apps/cli/', import.meta.url).pathname,
-      })
+      await run("node", ["scripts/sync-version.mjs"], {
+        cwd: new URL("../apps/cli/", import.meta.url).pathname,
+      });
     },
-  }
+  };
 }
 
 /**
@@ -48,21 +51,21 @@ function syncCliVersion(): TegamiPlugin {
  * published as part of the release note. They are stripped here rather than
  * left out of commits, because the commits are the right place for them.
  */
-const TRAILER = /^(?:Claude-Session|Co-authored-by|Signed-off-by|Refs|Closes):/i
+const TRAILER = /^(?:Claude-Session|Co-authored-by|Signed-off-by|Refs|Closes):/i;
 
 function withoutTrailers(): LogGenerator {
-  const base = simpleGenerator()
+  const base = simpleGenerator();
   return {
     async generate(options) {
-      const text = await base.generate.call(this, options)
+      const text = await base.generate.call(this, options);
       return text
-        .split('\n')
+        .split("\n")
         .filter((line) => !TRAILER.test(line.trim()))
-        .join('\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim()
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
     },
-  }
+  };
 }
 
 const paper = tegami({
@@ -71,8 +74,8 @@ const paper = tegami({
   plugins: [
     syncCliVersion(),
     github({
-      repo: 'kurtiz/forge',
-      versionPr: { base: 'main' },
+      repo: "kurtiz/forge",
+      versionPr: { base: "main" },
       /*
        * The release workflow creates the tag and the release itself, because
        * only it knows about the binaries that have to be attached. Tegami
@@ -83,7 +86,7 @@ const paper = tegami({
     }),
   ],
   /* The Worker is deployed, not released. Only the CLI is versioned. */
-  ignore: ['@forge/web'],
-})
+  ignore: ["@forge/web"],
+});
 
-await runCli(paper)
+await runCli(paper);
