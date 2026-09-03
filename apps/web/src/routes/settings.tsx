@@ -20,6 +20,7 @@ import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input } from '@cloudflare/kumo/components/input'
 import { ClipboardText } from '@cloudflare/kumo/components/clipboard-text'
 import { Page, PageHeader, Section, TopBar } from '@/components/app/shell'
+import { useConfirm } from '@/components/app/confirm'
 import { RelativeTime } from '@/components/app/relative-time'
 import {
   createApiToken,
@@ -92,6 +93,7 @@ function TokenSection({
   isAnonymous: boolean
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -119,7 +121,12 @@ function TokenSection({
   }
 
   async function revoke(tokenId: string, tokenName: string) {
-    if (!confirm(`Revoke "${tokenName}"? Anything using it stops working.`)) return
+    const ok = await confirm({
+      title: `Revoke "${tokenName}"?`,
+      description: 'Anything using it stops working, including CI.',
+      action: 'Revoke',
+    })
+    if (!ok) return
     await revokeApiToken({ data: { tokenId } })
     await router.invalidate()
   }
@@ -247,9 +254,15 @@ function GitHubSection({
   github: Awaited<ReturnType<typeof getSettings>>['github']
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
 
   async function disconnect(installationId: string, login: string) {
-    if (!confirm(`Disconnect ${login}? Pull requests stop being verified.`)) return
+    const ok = await confirm({
+      title: `Disconnect ${login}?`,
+      description: 'Pull requests in that account stop being verified.',
+      action: 'Disconnect',
+    })
+    if (!ok) return
     await disconnectInstallation({ data: { installationId } })
     await router.invalidate()
   }

@@ -23,6 +23,7 @@ import {
 import { Button } from '@cloudflare/kumo/components/button'
 import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input } from '@cloudflare/kumo/components/input'
+import { useConfirm } from '@/components/app/confirm'
 import type { ProjectJourney } from '@/server/contracts'
 import {
   addProjectJourney,
@@ -59,6 +60,7 @@ export function JourneyPlanPanel({
   journeys: ProjectJourney[]
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
   /** Which journey is being edited, `new` for the add form, null for neither. */
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
@@ -114,7 +116,12 @@ export function JourneyPlanPanel({
   }
 
   async function remove(journey: ProjectJourney) {
-    if (!confirm(`Stop verifying "${journey.name}"?`)) return
+    const ok = await confirm({
+      title: `Stop verifying "${journey.name}"?`,
+      description: 'It is removed from the plan and will not run again.',
+      action: 'Stop verifying',
+    })
+    if (!ok) return
     await removeProjectJourney({ data: { journeyId: journey.id } })
     await router.invalidate()
   }

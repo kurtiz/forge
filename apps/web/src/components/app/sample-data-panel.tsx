@@ -17,6 +17,7 @@ import { PencilSimpleIcon, PlusIcon, TableIcon, TrashIcon } from '@phosphor-icon
 import { Button } from '@cloudflare/kumo/components/button'
 import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input } from '@cloudflare/kumo/components/input'
+import { useConfirm } from '@/components/app/confirm'
 import type { ProjectSampleValue } from '@/server/contracts'
 import { addSampleValue, editSampleValue, removeSampleValue } from '@/server/api'
 
@@ -32,6 +33,7 @@ export function SampleDataPanel({
   values: ProjectSampleValue[]
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [busy, setBusy] = useState(false)
@@ -78,7 +80,12 @@ export function SampleDataPanel({
   }
 
   async function remove(sample: ProjectSampleValue) {
-    if (!confirm(`Remove the sample value for "${sample.label}"?`)) return
+    const ok = await confirm({
+      title: `Remove the sample value for "${sample.label}"?`,
+      description: 'Runs that need this field fall back to generated data.',
+      action: 'Remove',
+    })
+    if (!ok) return
     await removeSampleValue({ data: { sampleValueId: sample.id } })
     await router.invalidate()
   }
