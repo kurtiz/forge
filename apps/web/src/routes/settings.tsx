@@ -20,6 +20,7 @@ import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input } from '@cloudflare/kumo/components/input'
 import { ClipboardText } from '@cloudflare/kumo/components/clipboard-text'
 import { Page, PageHeader, Section, TopBar } from '@/components/app/shell'
+import { useConfirm } from '@/components/app/confirm'
 import { RelativeTime } from '@/components/app/relative-time'
 import {
   createApiToken,
@@ -92,6 +93,7 @@ function TokenSection({
   isAnonymous: boolean
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -119,7 +121,12 @@ function TokenSection({
   }
 
   async function revoke(tokenId: string, tokenName: string) {
-    if (!confirm(`Revoke "${tokenName}"? Anything using it stops working.`)) return
+    const ok = await confirm({
+      title: `Revoke "${tokenName}"?`,
+      description: 'Anything using it stops working, including CI.',
+      action: 'Revoke',
+    })
+    if (!ok) return
     await revokeApiToken({ data: { tokenId } })
     await router.invalidate()
   }
@@ -247,9 +254,15 @@ function GitHubSection({
   github: Awaited<ReturnType<typeof getSettings>>['github']
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
 
   async function disconnect(installationId: string, login: string) {
-    if (!confirm(`Disconnect ${login}? Pull requests stop being verified.`)) return
+    const ok = await confirm({
+      title: `Disconnect ${login}?`,
+      description: 'Pull requests in that account stop being verified.',
+      action: 'Disconnect',
+    })
+    if (!ok) return
     await disconnectInstallation({ data: { installationId } })
     await router.invalidate()
   }
@@ -270,7 +283,28 @@ function GitHubSection({
         <Empty
           size="sm"
           title="Not available on this deployment"
-          description="The GitHub App credentials are not configured, so pull request verification is off."
+          description="Pull request verification needs a GitHub App. Set all three secrets — any one missing turns the integration off — then redeploy."
+          contents={
+            <div className="grid gap-3 text-left">
+              <div className="rounded-md bg-kumo-base p-3 font-mono text-xs text-kumo-secondary">
+                <div className="mb-1 flex items-center gap-1.5 font-sans text-[11px] text-kumo-subtle">
+                  <TerminalWindowIcon size={12} />
+                  Set them
+                </div>
+                wrangler secret put GITHUB_APP_ID
+                <br />
+                wrangler secret put GITHUB_APP_PRIVATE_KEY
+                <br />
+                wrangler secret put GITHUB_WEBHOOK_SECRET
+              </div>
+              <p className="m-0 max-w-[52ch] text-xs text-kumo-subtle">
+                The private key must be PKCS#8. GitHub issues PKCS#1, so convert
+                it once with{' '}
+                <code className="font-mono text-[0.9em]">openssl pkcs8</code>{' '}
+                before pasting it.
+              </p>
+            </div>
+          }
         />
       ) : installations.length === 0 ? (
         <div>

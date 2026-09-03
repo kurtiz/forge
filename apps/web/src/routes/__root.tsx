@@ -2,6 +2,7 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { TooltipProvider } from '@cloudflare/kumo/components/tooltip'
+import { ConfirmProvider } from '@/components/app/confirm'
 import { THEME_INIT_SCRIPT } from '@/components/theme'
 import { getSession } from '@/server/api'
 
@@ -34,7 +35,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className="antialiased">
-        <TooltipProvider>{children}</TooltipProvider>
+        <TooltipProvider>
+          <ConfirmProvider>{children}</ConfirmProvider>
+        </TooltipProvider>
         {import.meta.env.DEV ? (
           <TanStackDevtools
             config={{ position: 'bottom-right' }}

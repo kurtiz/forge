@@ -16,6 +16,7 @@ import { KeyIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/
 import { Button } from '@cloudflare/kumo/components/button'
 import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input } from '@cloudflare/kumo/components/input'
+import { useConfirm } from '@/components/app/confirm'
 import type { ProjectCredential } from '@/server/contracts'
 import {
   addCredential,
@@ -46,6 +47,7 @@ export function CredentialsPanel({
   credentials: ProjectCredential[]
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
   /** Which account is being edited, `new` for the add form, null for neither. */
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
@@ -110,7 +112,12 @@ export function CredentialsPanel({
   }
 
   async function remove(credential: ProjectCredential) {
-    if (!confirm(`Remove "${credential.label}" (${credential.username})?`)) return
+    const ok = await confirm({
+      title: `Remove "${credential.label}"?`,
+      description: `The sign-in for ${credential.username} is deleted. Journeys that need it stop being verified.`,
+      action: 'Remove',
+    })
+    if (!ok) return
     await removeCredential({ data: { credentialId: credential.id } })
     await router.invalidate()
   }

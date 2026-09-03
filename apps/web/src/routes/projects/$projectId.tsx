@@ -12,6 +12,7 @@ import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input } from '@cloudflare/kumo/components/input'
 import { Page, PageHeader, Section, TopBar } from '@/components/app/shell'
 import { RunStatusPill, TriggerTag } from '@/components/app/status'
+import { useConfirm } from '@/components/app/confirm'
 import { RelativeTime } from '@/components/app/relative-time'
 import { ExecutorNotice } from '@/components/app/executor-notice'
 import { SchedulePanel } from '@/components/app/schedule-panel'
@@ -38,6 +39,7 @@ function ProjectPage() {
     Route.useLoaderData()
   const { session } = Route.useRouteContext()
   const router = useRouter()
+  const confirm = useConfirm()
   const [busy, setBusy] = useState(false)
   const [previewTemplate, setPreviewTemplate] = useState(
     project.previewUrlTemplate ?? '',
@@ -72,7 +74,13 @@ function ProjectPage() {
   }
 
   async function remove() {
-    if (!confirm(`Delete "${project.name}" and all of its runs?`)) return
+    const ok = await confirm({
+      title: `Delete "${project.name}"?`,
+      description:
+        'Every run, finding, and piece of evidence for this project is deleted too. This cannot be undone.',
+      action: 'Delete project',
+    })
+    if (!ok) return
     await deleteProject({ data: { projectId: project.id } })
     await router.invalidate()
     await router.navigate({ to: '/dashboard' })
