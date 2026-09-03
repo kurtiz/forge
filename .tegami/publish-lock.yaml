@@ -1,0 +1,14 @@
+core:changelogs:
+  - content: "---\npackages:\n  \"@forge/cli\":\n    type: minor\n---\n\n### Keep commit trailers out of published release notes\n\nChangelog entries are generated from commit bodies, so the Claude-Session\ntrailer was being published as the last line of the GitHub release note.\nSign-offs and co-author lines would have followed it.\n\nThe generator now drops trailer lines and collapses the gap they leave.\nThey stay in the commits, which is where they are addressed to the\nrepository rather than to whoever is reading a release.\n\nClaude-Session: https://claude.ai/code/session_01E1EpEPpvhqcGyPDRMn7rL4\n\n## Draw the run as a live Ink panel on a terminal\n\nWatching a verification used to mean a single rewriting line of text for\nhowever long the run took. The terminal now gets a panel: a spinner on\nthe current phase, a bar that fills as journeys finish, every journey\nresolving from a dot to a tick or a cross as it lands, an elapsed clock\nso a slow run visibly stays alive, and the result drawn into the same\nframe when it ends. Findings carry a filled severity badge rather than a\ncoloured word, because a block of colour is findable when scanning.\n\nOnly a terminal gets it. A pipe, a file, a CI log, --json, and NO_COLOR\nall keep the plain renderer, since a view that redraws itself is\nthousands of control characters and no information once nothing is\nwatching -- and this CLI's main job is being a CI gate.\n\nKeeping two renderers honest is the point of src/summary.ts: both read\none summarise() result, so they cannot disagree about what a run found.\nThat extraction also fixes \"1 journeys failed\", which read as a bug in\nthe tool rather than in the application under test.\n\nwaitForRun now hands out the whole report instead of a pre-rendered\nstring, so the panel can show journeys while the plain path keeps its\none-line status.\n\nInk is the CLI's only dependency. react-devtools-core is a devDependency\npurely because Bun resolves Ink's import of it while bundling; defining\nprocess.env.DEV as false kills that branch in minification, so neither it\nnor the devtools code reaches the binary, which grows by 1 MB.\n\nClaude-Session: https://claude.ai/code/session_01E1EpEPpvhqcGyPDRMn7rL4\n"
+    filename: 2026-09-03-mtkxyitk.md
+    v: 0.0.0
+core:packages:
+  - id: npm:forge
+    updated: false
+  - changelogIds:
+      - 2026-09-03-mtkxyitk.md
+    id: npm:@forge/cli
+    updated: true
+npm:packages:
+  - id: npm:forge
+  - id: npm:@forge/cli
