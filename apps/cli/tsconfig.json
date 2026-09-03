@@ -10,9 +10,8 @@
     "types": ["node"],
     /* Ink is React, so the views compile through the automatic JSX runtime. */
     "jsx": "react-jsx",
-    "outDir": "dist",
-    "rootDir": "src",
-    "declaration": false,
-    "sourceMap": true
+    /* dist/ is bundled by scripts/build.mjs, so tsc never emits: it is here to
+       check types, and nothing else. */
+    "noEmit": true
   }
 }

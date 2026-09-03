@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "tegami": "^1.4.0",
+    "@types/node": "^24.1.0",
     "typescript": "^6.0.2"
   }
 }

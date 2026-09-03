@@ -28,6 +28,10 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # The CLI's dist/ is bundled by Bun, not emitted by tsc, so the build step
+      # below needs Bun even though nothing here compiles a binary.
+      - uses: oven-sh/setup-bun@v2
+
       - run: pnpm install --frozen-lockfile
 
       # Fails the pull request if package.json and src/version.ts disagree,
