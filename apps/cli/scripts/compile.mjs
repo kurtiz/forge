@@ -36,6 +36,14 @@ for (const [target, name] of TARGETS) {
       '--compile',
       '--minify',
       '--sourcemap',
+      /*
+       * Ink imports react-devtools-core behind `process.env.DEV === 'true'`.
+       * Bun resolves that import whether or not the branch can run, so the
+       * value is fixed here: the branch dies in minification and the devtools
+       * package never reaches the binary.
+       */
+      '--define',
+      'process.env.DEV="false"',
       `--target=${target}`,
       '--outfile',
       `bin/${name}`,

@@ -28,18 +28,25 @@ import {
   bold,
   clearProgress,
   dim,
-  FAIL,
   fatal,
-  green,
   note,
   out,
   PASS,
+  printReport,
   progress,
-  red,
-  yellow,
 } from './output.js'
-import { TERMINAL_STATUSES, type Finding, type RunReport } from './types.js'
+import { TERMINAL_STATUSES, type RunReport } from './types.js'
 import { VERSION } from './version.js'
+
+/**
+ * Whether to draw the Ink views instead of plain lines.
+ *
+ * A terminal gets the live panel. A pipe, a file, a CI log, and `--json` get
+ * the plain renderer, because a view that redraws itself is thousands of
+ * escape sequences and no information once it is not attached to a screen.
+ */
+const interactive = (asJson: boolean) =>
+  !asJson && process.stdout.isTTY === true && !process.env.NO_COLOR
 
 const KNOWN_FLAGS = new Set([
   'url',
@@ -216,8 +223,13 @@ async function projects(args: Args): Promise<number> {
       note('No projects yet. Run "forge verify --url <url>" to create one.')
       return 0
     }
-    for (const project of list) {
-      out(`${project.id}  ${project.name}  ${dim(project.targetUrl)}`)
+    if (interactive(false)) {
+      const { renderProjects } = await import('./ui/projects.js')
+      renderProjects(list)
+    } else {
+      for (const project of list) {
+        out(`${project.id}  ${project.name}  ${dim(project.targetUrl)}`)
+      }
     }
     return 0
   } catch (error) {
@@ -255,7 +267,9 @@ async function verify(args: Args): Promise<number> {
     )
   }
 
-  if (!asJson) {
+  const live = interactive(asJson)
+
+  if (!asJson && !live) {
     note(`${bold('Forge verification')}`)
     note(dim(started.url))
     note('')
@@ -267,22 +281,38 @@ async function verify(args: Args): Promise<number> {
     return 0
   }
 
+  // The panel draws the header, the progress, and the result in one frame, so
+  // it is started before the first poll and closed by whichever ends the run.
+  const view = live
+    ? (await import('./ui/verify.js')).startVerifyView(
+        url ?? projectId ?? started.run.id,
+        started.url,
+      )
+    : null
+
   let report: RunReport
   try {
-    report = await waitForRun(forge, started.run.id, timeoutSeconds, !asJson)
+    report = await waitForRun(
+      forge,
+      started.run.id,
+      timeoutSeconds,
+      view ? (update) => view.update(update) : !asJson,
+    )
   } catch (error) {
+    view?.stop()
     return fatal(error instanceof Error ? error.message : String(error), 1)
   }
 
   if (asJson) {
     out(JSON.stringify(report, null, 2))
+  } else if (view) {
+    view.finish(report)
   } else {
     printReport(report)
   }
 
   const bugs = report.findings.filter((f) => f.classification === 'confirmed_bug')
-  if (report.run.status === 'failed') return 1
-  return bugs.length > 0 ? 1 : 0
+  return report.run.status === 'failed' || bugs.length > 0 ? 1 : 0
 }
 
 /**
@@ -297,10 +327,14 @@ async function waitForRun(
   forge: ForgeClient,
   runId: string,
   timeoutSeconds: number,
-  showProgress: boolean,
+  /**
+   * A callback receives every poll and draws it however it likes; `true` uses
+   * the plain one-line status, and `false` stays silent.
+   */
+  onUpdate: ((report: RunReport) => void) | boolean,
 ): Promise<RunReport> {
   const deadline = Date.now() + timeoutSeconds * 1000
-  const tick = showProgress ? progress() : () => {}
+  const line = onUpdate === true ? progress() : null
   let consecutiveErrors = 0
 
   for (;;) {
@@ -315,15 +349,19 @@ async function waitForRun(
       const report = await forge.getRun(runId)
       consecutiveErrors = 0
 
-      const journeys = report.journeys.length
-      const done = report.journeys.filter(
-        (j) => j.status === 'passed' || j.status === 'failed',
-      ).length
-      tick(
-        journeys > 0
-          ? `${report.run.status} — ${done}/${journeys} journeys`
-          : report.run.status,
-      )
+      if (typeof onUpdate === 'function') {
+        onUpdate(report)
+      } else if (line) {
+        const journeys = report.journeys.length
+        const done = report.journeys.filter(
+          (j) => j.status === 'passed' || j.status === 'failed',
+        ).length
+        line(
+          journeys > 0
+            ? `${report.run.status} — ${done}/${journeys} journeys`
+            : report.run.status,
+        )
+      }
 
       if (TERMINAL_STATUSES.includes(report.run.status)) {
         clearProgress()
@@ -348,97 +386,6 @@ async function waitForRun(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/* ----------------------------------------------------------------- report */
-
-function printReport(report: RunReport): void {
-  const { run, journeys, findings } = report
-
-  if (run.status === 'canceled') {
-    note(`${yellow('Canceled')} ${run.summary ?? ''}`)
-    note(dim(report.url))
-    return
-  }
-
-  if (run.status === 'failed') {
-    note(`${FAIL} The run could not complete.`)
-    note(dim(report.url))
-    return
-  }
-
-  const passed = journeys.filter((j) => j.status === 'passed')
-  const failed = journeys.filter((j) => j.status === 'failed')
-  const skipped = journeys.filter((j) => j.status === 'skipped')
-
-  out(`${PASS} Application reachable`)
-  out(
-    `${PASS} ${run.executor === 'solari' ? 'Browser session' : 'HTTP executor (no JavaScript)'}`,
-  )
-  out(`${PASS} ${journeys.length} journeys discovered`)
-  if (passed.length > 0) out(`${PASS} ${passed.length} journeys passed`)
-  if (failed.length > 0) out(`${FAIL} ${failed.length} journeys failed`)
-  // Neither a pass nor a failure: nothing on the page matched, so nothing was
-  // verified. Printed so a green run cannot be read as more than it is.
-  if (skipped.length > 0) {
-    out(`${yellow('!')} ${skipped.length} journeys could not be attempted`)
-  }
-
-  const bugs = findings.filter((f) => f.classification === 'confirmed_bug')
-  const others = findings.filter((f) => f.classification !== 'confirmed_bug')
-
-  if (bugs.length > 0) {
-    out('')
-    out(bold(bugs.length === 1 ? 'Finding' : 'Findings'))
-    for (const finding of bugs) printFinding(finding)
-  }
-
-  if (others.length > 0) {
-    out('')
-    out(
-      dim(
-        `${others.length} further failure${others.length === 1 ? '' : 's'} classified as flaky or environmental:`,
-      ),
-    )
-    for (const finding of others) {
-      out(dim(`  ${finding.title} (${finding.classification})`))
-    }
-  }
-
-  out('')
-  if (bugs.length === 0) {
-    out(
-      passed.length > 0
-        ? green('No confirmed defects.')
-        : yellow('No confirmed defects, but no journey was actually exercised.'),
-    )
-  }
-  out(dim('View:'))
-  out(report.url)
-  if (run.replayUrl) {
-    out(dim('Replay:'))
-    out(run.replayUrl)
-  }
-}
-
-function printFinding(finding: Finding): void {
-  const severity =
-    finding.severity === 'critical' || finding.severity === 'high'
-      ? red(finding.severity)
-      : yellow(finding.severity)
-
-  out(`  ${severity}  ${bold(finding.title)}`)
-  if (finding.reproductionAttempts > 0) {
-    out(
-      dim(
-        `    reproduced ${finding.reproductionFailures}/${finding.reproductionAttempts} times`,
-      ),
-    )
-  }
-  if (finding.rootCause) out(dim(`    ${finding.rootCause}`))
-  for (const file of finding.affectedFiles.slice(0, 3)) {
-    out(dim(`    ${file}`))
-  }
 }
 
 main()
