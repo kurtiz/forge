@@ -21,10 +21,12 @@
     "build:cli": "pnpm --filter @forge/cli build",
     "compile:cli": "pnpm --filter @forge/cli compile",
     "compile:cli:all": "pnpm --filter @forge/cli compile:all",
+    "tegami": "node scripts/tegami.mts",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run build:cli"
   },
   "devDependencies": {
+    "tegami": "^1.4.0",
     "typescript": "^6.0.2"
   }
 }

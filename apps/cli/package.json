@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "description": "Verify a deployed web application from your terminal. AI writes the code. Forge proves it works.",
   "type": "module",
+  "private": true,
   "bin": { "forge": "./dist/index.js" },
   "files": ["dist"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "build": "tsc -p .",
-    "compile": "bun build src/index.ts --compile --minify --sourcemap --outfile bin/forge",
-    "compile:all": "node scripts/compile.mjs",
+    "build": "pnpm sync-version && tsc -p .",
+    "compile": "pnpm sync-version && bun build src/index.ts --compile --minify --sourcemap --outfile bin/forge",
+    "compile:all": "pnpm sync-version && node scripts/compile.mjs",
+    "sync-version": "node scripts/sync-version.mjs",
+    "check-version": "node scripts/sync-version.mjs --check",
     "typecheck": "tsc -p . --noEmit"
   },
   "devDependencies": {

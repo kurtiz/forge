@@ -39,6 +39,7 @@ import {
   yellow,
 } from './output.js'
 import { TERMINAL_STATUSES, type Finding, type RunReport } from './types.js'
+import { VERSION } from './version.js'
 
 const KNOWN_FLAGS = new Set([
   'url',
@@ -54,8 +55,6 @@ const KNOWN_FLAGS = new Set([
   'help',
   'version',
 ])
-
-const VERSION = '0.1.0'
 
 const HELP = `${bold('forge')} — AI writes the code. Forge proves it works.
 
