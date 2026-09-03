@@ -103,12 +103,12 @@ async function main(): Promise<number> {
     return fatal(error instanceof Error ? error.message : String(error))
   }
 
-  if (boolFlag(args, 'help') || args.command === 'help') {
-    out(HELP)
-    return 0
-  }
   if (boolFlag(args, 'version') || args.command === 'version') {
     out(VERSION)
+    return 0
+  }
+  if (boolFlag(args, 'help') || args.command === 'help') {
+    out(HELP)
     return 0
   }
 
