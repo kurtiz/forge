@@ -80,6 +80,15 @@ ${bold('Environment')}
   FORGE_TOKEN        API token, overrides the stored one
   FORGE_HOST         Forge deployment, overrides the stored one
 
+${bold('Which host a command talks to')}
+  1. --host <url>            this command only
+  2. FORGE_HOST              this shell or CI job
+  3. ~/.forge/config.json    written by "forge login --host <url>"
+  4. the built-in default    ${DEFAULT_HOST}
+
+  A host with no scheme is read as https, and a trailing slash is dropped, so
+  --host forge.example.com works but --host localhost:8787 needs its http://.
+
 ${bold('Exit codes')}
   0  no confirmed defects
   1  confirmed defects, or the run failed

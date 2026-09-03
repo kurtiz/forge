@@ -468,7 +468,7 @@ Finding
     reproduced 3/3 times
 
 View:
-https://forge.dev/runs/run_123
+https://forge.papiliocurtis.workers.dev/runs/run_123
 ```
 
 | Command | |
@@ -516,6 +516,12 @@ unchecked turns a typo into a confusing failure much later, in CI, on someone
 else's day. `FORGE_TOKEN` and `FORGE_HOST` override the stored file, which is
 what CI should use.
 
+Commands talk to `https://forge.papiliocurtis.workers.dev` unless told
+otherwise, and the first override present wins: `--host <url>` on the command,
+then `FORGE_HOST`, then the `host` stored by `forge login --host <url>`. That
+is what points the same binary at a self-hosted deployment, a staging Worker,
+or `wrangler dev` on localhost.
+
 The CLI has no dependencies: Node's own fetch and about eight hundred lines,
 because a verification tool installed on every developer machine and CI runner
 should not bring a package tree with it. It polls the REST API rather than
@@ -545,7 +551,7 @@ console already uses. A request naming someone else's run gets 404 rather than
 | `GET /api/v1/whoami` | the account behind a token |
 
 ```bash
-curl -X POST https://forge.dev/api/v1/runs \
+curl -X POST https://forge.papiliocurtis.workers.dev/api/v1/runs \
   -H "Authorization: Bearer $FORGE_TOKEN" \
   -H 'content-type: application/json' \
   -d '{"url":"https://preview.example.com","goal":"checkout"}'

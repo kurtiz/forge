@@ -63,3 +63,31 @@ forge projects                                 list projects
 `FORGE_TOKEN` and `FORGE_HOST` override the stored configuration, which is what
 CI should use. The config file is `~/.forge/config.json`, written with owner-only
 permissions.
+
+## Which host a command talks to
+
+Commands default to `https://forge.papiliocurtis.workers.dev`. Four things can
+point them somewhere else — a self-hosted deployment, a staging Worker, or
+`wrangler dev` on your own machine — and the first one present wins:
+
+| | Override | Scope |
+|---|---|---|
+| 1 | `--host <url>` on any command | that one command |
+| 2 | `FORGE_HOST` | the shell or CI job |
+| 3 | `host` in `~/.forge/config.json` | the machine, until `forge logout` |
+| 4 | the built-in default | everything else |
+
+```bash
+# Once, for this machine: login stores the host next to the token.
+forge login --host https://forge.staging.example.com
+
+# For a single command, leaving the stored host alone.
+forge verify --url https://preview.example.com --host http://localhost:8787
+
+# For a CI job or a shell session.
+export FORGE_HOST=https://forge.staging.example.com
+```
+
+A host with no scheme is read as `https`, and a trailing slash is dropped, so
+`--host forge.example.com` works but `--host localhost:8787` needs its
+`http://` spelled out.
