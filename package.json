@@ -19,6 +19,8 @@
     "db:studio": "pnpm --filter @forge/web db:studio",
     "cli": "pnpm --filter @forge/cli",
     "build:cli": "pnpm --filter @forge/cli build",
+    "compile:cli": "pnpm --filter @forge/cli compile",
+    "compile:cli:all": "pnpm --filter @forge/cli compile:all",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run build:cli"
   },

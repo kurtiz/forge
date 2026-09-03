@@ -39,6 +39,25 @@ whole report:
 forge verify --url https://preview.example.com --json | jq '.findings[].classification'
 ```
 
+## A single executable
+
+`bun build --compile` embeds the Bun runtime in the output, so the result runs
+on a machine with no Node and no npm:
+
+```bash
+pnpm compile         # bin/forge, for this machine
+pnpm compile:all     # bin/forge-<os>-<arch>, for all five release targets
+```
+
+macOS and Linux on x64 and arm64, plus Windows x64. Bun downloads each target's
+runtime the first time it compiles for it, so the first `compile:all` is slow
+and later ones are not.
+
+The binaries are ~60-90 MB, because a runtime is inside each one. They are
+release artifacts rather than package contents: `bin/` is ignored by git and is
+not in the npm tarball, where `dist/` and a Node shebang remain the right
+answer for `npm install -g @forge/cli`.
+
 ## Exit codes
 
 | Code | Meaning |

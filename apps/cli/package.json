@@ -8,6 +8,8 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "build": "tsc -p .",
+    "compile": "bun build src/index.ts --compile --minify --sourcemap --outfile bin/forge",
+    "compile:all": "node scripts/compile.mjs",
     "typecheck": "tsc -p . --noEmit"
   },
   "devDependencies": {
