@@ -34,7 +34,7 @@ function Landing() {
         right={
           <Link to="/sign-in" className="no-underline">
             <Button variant="primary" size="sm">
-              Start verifying
+              Login
             </Button>
           </Link>
         }
