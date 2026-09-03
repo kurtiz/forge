@@ -6,7 +6,7 @@
  * start. Layout families deliberately differ per section so the page does not
  * read as a template.
  */
-import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
   ArrowRightIcon,
   BracketsCurlyIcon,
@@ -14,17 +14,17 @@ import {
   CubeIcon,
   RepeatIcon,
   ShieldCheckIcon,
-} from '@phosphor-icons/react'
-import { Button } from '@cloudflare/kumo/components/button'
-import { ForgeMark, TopBar } from '#/components/app/shell'
+} from "@phosphor-icons/react";
+import { Button } from "@cloudflare/kumo/components/button";
+import { ForgeMark, TopBar } from "#/components/app/shell";
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => {
     // Signed-in visitors have no use for the pitch.
-    if (context.session.user) throw redirect({ to: '/dashboard' })
+    if (context.session.user) throw redirect({ to: "/dashboard" });
   },
   component: Landing,
-})
+});
 
 function Landing() {
   return (
@@ -39,14 +39,14 @@ function Landing() {
           </Link>
         }
       />
-      <Hero />
-      <Evidence />
-      <Pipeline />
-      <Guarantees />
-      <Close />
-      <Footer />
+      <Hero/>
+      <Evidence/>
+      <Pipeline/>
+      <Guarantees/>
+      <Close/>
+      <Footer/>
     </>
-  )
+  );
 }
 
 /* ------------------------------------------------------------------- hero */
@@ -54,17 +54,20 @@ function Landing() {
 function Hero() {
   return (
     <section className="grid-field relative border-b border-kumo-hairline">
-      <div className="mx-auto grid max-w-[1180px] gap-12 px-5 pb-20 pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:pt-24">
+      <div
+        className="mx-auto grid max-w-295 gap-12 px-5 pb-20 pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:pt-24">
         <div className="enter">
-          <p className="mb-5 inline-flex items-center gap-2 rounded-md border border-kumo-hairline bg-kumo-base px-2.5 py-1 text-xs font-medium text-kumo-subtle">
-            <ForgeMark size={13} />
+          <p
+            className="mb-5 inline-flex items-center gap-2 rounded-md border border-kumo-hairline bg-kumo-base px-2.5 py-1 text-xs font-medium text-kumo-subtle">
+            <ForgeMark size={13}/>
             Evidence-first verification
           </p>
 
-          <h1 className="m-0 max-w-[15ch] text-[2.6rem] leading-[1.04] font-semibold tracking-[-0.03em] text-kumo-strong sm:text-[3.4rem]">
+          <h1
+            className="m-0 max-w-[15ch] text-[2.6rem] leading-[1.04] font-semibold tracking-[-0.03em] text-kumo-strong sm:text-[3.4rem]">
             AI writes the code.
-            <br />
-            Forge <span className="text-[var(--forge-accent-strong)]">proves</span> it
+            <br/>
+            Forge <span className="text-forge-accent-strong">proves</span> it
             works.
           </h1>
 
@@ -75,8 +78,9 @@ function Hero() {
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link to="/sign-in" className="no-underline">
-              <Button variant="primary" size="lg" icon={<ArrowRightIcon size={16} />}>
-                Start verifying
+              <Button variant="primary" size="lg">
+                <span>Start verifying</span>
+                <span><ArrowRightIcon size={16}/></span>
               </Button>
             </Link>
             <a href="/demo" className="no-underline">
@@ -87,10 +91,10 @@ function Hero() {
           </div>
         </div>
 
-        <FindingPreview />
+        <FindingPreview/>
       </div>
     </section>
-  )
+  );
 }
 
 /**
@@ -100,9 +104,10 @@ function Hero() {
  */
 function FindingPreview() {
   return (
-    <div className="enter overflow-hidden rounded-xl border border-kumo-hairline bg-kumo-base shadow-sm [animation-delay:120ms]">
+    <div
+      className="enter overflow-hidden rounded-xl border border-kumo-hairline bg-kumo-base shadow-sm [animation-delay:120ms]">
       <div className="flex items-center gap-2 border-b border-kumo-hairline px-4 py-2.5">
-        <span className="inline-block size-1.5 rounded-full bg-[var(--forge-fail)]" />
+        <span className="inline-block size-1.5 rounded-full bg-forge-fail"/>
         <span className="text-xs font-medium text-kumo-subtle">
           Finding · Northbeam checkout
         </span>
@@ -115,9 +120,9 @@ function FindingPreview() {
         </p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {[
-            ['Critical', 'var(--forge-fail)'],
-            ['Confirmed bug', 'var(--forge-fail)'],
-            ['Confidence 0.98', 'var(--forge-idle)'],
+            ["Critical", "var(--forge-fail)"],
+            ["Confirmed bug", "var(--forge-fail)"],
+            ["Confidence 0.98", "var(--forge-idle)"],
           ].map(([label, color]) => (
             <span
               key={label}
@@ -136,8 +141,8 @@ function FindingPreview() {
 
       <div className="console px-4 py-3 font-mono text-[11.5px] leading-relaxed text-kumo-subtle">
         <div className="console-row py-1">
-          <span className="text-kumo-strong">POST</span> /demo/checkout{' '}
-          <span className="text-[var(--forge-fail)]">500</span>
+          <span className="text-kumo-strong">POST</span> /demo/checkout{" "}
+          <span className="text-forge-fail">500</span>
         </div>
         <div className="console-row py-1">
           TypeError: Cannot read properties of undefined (reading 'amountOff')
@@ -147,7 +152,7 @@ function FindingPreview() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 /* --------------------------------------------------------------- evidence */
@@ -155,26 +160,27 @@ function FindingPreview() {
 const EVIDENCE = [
   {
     icon: CameraIcon,
-    title: 'What the browser saw',
-    body: 'Screenshots, page state, console errors, and failed requests, captured at the step that broke.',
+    title: "What the browser saw",
+    body: "Screenshots, page state, console errors, and failed requests, captured at the step that broke.",
   },
   {
     icon: RepeatIcon,
-    title: 'How often it broke',
-    body: 'Every failure is re-run. Three of three is a bug. One of three is flaky, and the report says so.',
+    title: "How often it broke",
+    body: "Every failure is re-run. Three of three is a bug. One of three is flaky, and the report says so.",
   },
   {
     icon: BracketsCurlyIcon,
-    title: 'What the agent did',
-    body: 'An auditable trace of observations, actions, and results. No hidden reasoning, no unexplained clicks.',
+    title: "What the agent did",
+    body: "An auditable trace of observations, actions, and results. No hidden reasoning, no unexplained clicks.",
   },
-]
+];
 
 function Evidence() {
   return (
     <section className="border-b border-kumo-hairline">
-      <div className="mx-auto max-w-[1180px] px-5 py-20">
-        <h2 className="m-0 max-w-[20ch] text-[1.75rem] leading-tight font-semibold tracking-[-0.02em] text-kumo-strong">
+      <div className="mx-auto max-w-295 px-5 py-20">
+        <h2
+          className="m-0 max-w-[20ch] text-[1.75rem] leading-tight font-semibold tracking-[-0.02em] text-kumo-strong">
           A failing test tells you something broke. Forge tells you what.
         </h2>
         <p className="mt-3 max-w-[54ch] text-[15px] text-kumo-subtle">
@@ -182,10 +188,11 @@ function Evidence() {
           on the model's word alone.
         </p>
 
-        <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-kumo-hairline bg-kumo-hairline sm:grid-cols-[1.15fr_1fr_1fr]">
+        <div
+          className="mt-12 grid gap-px overflow-hidden rounded-xl border border-kumo-hairline bg-kumo-hairline sm:grid-cols-[1.15fr_1fr_1fr]">
           {EVIDENCE.map(({ icon: Icon, title, body }) => (
             <div key={title} className="bg-kumo-base p-6">
-              <Icon size={20} className="text-[var(--forge-accent-strong)]" />
+              <Icon size={20} className="text-forge-accent-strong"/>
               <h3 className="mb-1.5 mt-4 text-[15px] font-semibold text-kumo-strong">
                 {title}
               </h3>
@@ -195,34 +202,34 @@ function Evidence() {
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 /* --------------------------------------------------------------- pipeline */
 
 const PIPELINE = [
   {
-    phase: 'Discover',
-    body: 'The Explorer reads the entry page and names the journeys a real user would care about, ranked by what breaking them would cost.',
+    phase: "Discover",
+    body: "The Explorer reads the entry page and names the journeys a real user would care about, ranked by what breaking them would cost.",
   },
   {
-    phase: 'Execute',
-    body: 'The Operator drives each journey by accessible name and role, not by coordinates. The model sets strategy; a deterministic executor does the clicking.',
+    phase: "Execute",
+    body: "The Operator drives each journey by accessible name and role, not by coordinates. The model sets strategy; a deterministic executor does the clicking.",
   },
   {
-    phase: 'Reproduce',
-    body: 'A failure is re-run before it is believed. Infrastructure faults are classified out first so they never reach you as application defects.',
+    phase: "Reproduce",
+    body: "A failure is re-run before it is believed. Infrastructure faults are classified out first so they never reach you as application defects.",
   },
   {
-    phase: 'Judge',
-    body: 'Severity and confidence come from measured reproduction, not from the model. The Judge writes the narrative; it cannot upgrade the verdict.',
+    phase: "Judge",
+    body: "Severity and confidence come from measured reproduction, not from the model. The Judge writes the narrative; it cannot upgrade the verdict.",
   },
-]
+];
 
 function Pipeline() {
   return (
     <section className="border-b border-kumo-hairline bg-kumo-recessed">
-      <div className="mx-auto max-w-[1180px] px-5 py-20">
+      <div className="mx-auto max-w-295 px-5 py-20">
         <h2 className="m-0 text-[1.75rem] font-semibold tracking-[-0.02em] text-kumo-strong">
           Four agents, one verdict
         </h2>
@@ -232,7 +239,7 @@ function Pipeline() {
             <li key={phase} className="border-t border-kumo-hairline pt-5">
               <div className="flex items-baseline gap-3">
                 <span className="tabular text-xs text-kumo-subtle">
-                  {String(i + 1).padStart(2, '0')}
+                  {String(i + 1).padStart(2, "0")}
                 </span>
                 <h3 className="m-0 text-[15px] font-semibold text-kumo-strong">
                   {phase}
@@ -246,7 +253,7 @@ function Pipeline() {
         </ol>
       </div>
     </section>
-  )
+  );
 }
 
 /* ------------------------------------------------------------- guarantees */
@@ -254,9 +261,9 @@ function Pipeline() {
 function Guarantees() {
   return (
     <section className="border-b border-kumo-hairline">
-      <div className="mx-auto grid max-w-[1180px] gap-10 px-5 py-20 lg:grid-cols-2">
+      <div className="mx-auto grid max-w-295 gap-10 px-5 py-20 lg:grid-cols-2">
         <div>
-          <ShieldCheckIcon size={22} className="text-[var(--forge-accent-strong)]" />
+          <ShieldCheckIcon size={22} className="text-forge-accent-strong"/>
           <h2 className="mb-3 mt-4 text-[1.4rem] font-semibold tracking-[-0.02em] text-kumo-strong">
             The agent proposes. Application code decides.
           </h2>
@@ -270,7 +277,7 @@ function Guarantees() {
         </div>
 
         <div>
-          <CubeIcon size={22} className="text-[var(--forge-accent-strong)]" />
+          <CubeIcon size={22} className="text-forge-accent-strong"/>
           <h2 className="mb-3 mt-4 text-[1.4rem] font-semibold tracking-[-0.02em] text-kumo-strong">
             Every run is bounded
           </h2>
@@ -283,7 +290,7 @@ function Guarantees() {
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 /* ------------------------------------------------------------------ close */
@@ -291,31 +298,33 @@ function Guarantees() {
 function Close() {
   return (
     <section className="grid-field border-b border-kumo-hairline">
-      <div className="mx-auto max-w-[1180px] px-5 py-24 text-center">
-        <h2 className="m-0 text-[2rem] font-semibold tracking-[-0.025em] text-kumo-strong">
+      <div className="mx-auto max-w-295 px-5 py-24 text-center">
+        <h2 className="m-0 text-[2rem] font-semibold tracking-tight text-kumo-strong">
           Verify your first app in a minute
         </h2>
         <p className="mx-auto mt-3 max-w-[48ch] text-[15px] text-kumo-subtle">
           Point Forge at the bundled demo application and watch it find the
           seeded defects live.
         </p>
-        <div className="mt-8">
+        <div className="mt-8 flex justify-center gap-3">
           <Link to="/sign-in" className="no-underline">
-            <Button variant="primary" size="lg" icon={<ArrowRightIcon size={16} />}>
-              Start verifying
+            <Button variant="primary" size="lg">
+              <span>Start verifying</span>
+              <span><ArrowRightIcon size={16}/></span>
             </Button>
           </Link>
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 function Footer() {
   return (
-    <footer className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-4 px-5 py-8 text-xs text-kumo-subtle">
+    <footer
+      className="mx-auto flex max-w-295 flex-wrap items-center justify-between gap-4 px-5 py-8 text-xs text-kumo-subtle">
       <span className="inline-flex items-center gap-2">
-        <ForgeMark size={14} />
+        <ForgeMark size={14}/>
         Forge
       </span>
       <span>
@@ -323,5 +332,5 @@ function Footer() {
         Start
       </span>
     </footer>
-  )
+  );
 }

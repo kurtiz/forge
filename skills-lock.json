@@ -31,6 +31,12 @@
       "skillPath": "skills/brutalist-skill/SKILL.md",
       "computedHash": "8fc355c4aadb7d29c53ca28bc41be3cd6eea765d121e3737c4dc2d0f90a8effa"
     },
+    "kumo-design": {
+      "source": "cloudflare/kumo",
+      "sourceType": "github",
+      "skillPath": "skills/kumo-design/SKILL.md",
+      "computedHash": "43d7a6e2ed67d348c15365ce136630fb62e7a68ecad88eae6100d35cfa289814"
+    },
     "make-interfaces-feel-better": {
       "source": "jakubkrehel/make-interfaces-feel-better",
       "sourceType": "github",
