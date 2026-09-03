@@ -79,7 +79,7 @@ The model proposes. Application code decides.
 **Solari is driven over raw CDP, not through its SDK.** `@solarisdk/browser`
 bundles a Playwright fork that needs Node and raw sockets, so it cannot run on
 Workers. Solari exposes each session's CDP endpoint and Workers can hold an
-outbound WebSocket, so `src/server/execution/` speaks CDP directly. The whole
+outbound WebSocket, so `apps/web/src/server/execution/` speaks CDP directly. The whole
 control plane stays on Workers with no extra hop.
 
 **There is a working fallback.** Without a `SOLARI_API_KEY`, runs use an HTTP
@@ -90,7 +90,7 @@ run and shown in the UI, because a finding is only as good as the fidelity
 behind it.
 
 **The Judge cannot overrule the measurement.** Reproduction rate, severity, and
-classification are computed by deterministic rules in `src/server/domain/`. The
+classification are computed by deterministic rules in `apps/web/src/server/domain/`. The
 model writes the narrative and may propose a root cause; it cannot promote a
 flaky failure to a confirmed bug. Every model response is schema-validated
 before it reaches the database.
@@ -100,7 +100,7 @@ execution loop, the event sequence, the cancellation flag, and the set of
 clients watching live. HTTP requests never execute a run inline; they return a
 run id and the client subscribes over SSE.
 
-**Drizzle is the schema, not just the query builder.** `src/server/db/schema.ts`
+**Drizzle is the schema, not just the query builder.** `apps/web/src/server/db/schema.ts`
 defines every table once, and three things read it: drizzle-kit generates the
 migrations from it, Better Auth's Drizzle adapter resolves its own tables
 through it, and Forge's queries are typed by it. Renaming a column is a type
@@ -109,7 +109,7 @@ so the row types match the API contracts exactly, which is why the UI can
 exhaustively switch on a run status or a severity.
 
 **One Worker, real internal boundaries.** `services/*` in the design document
-map to modules under `src/server/`, not to separate Workers. Splitting them out
+map to modules under `apps/web/src/server/`, not to separate Workers. Splitting them out
 would be microservice theatre at this size; the boundaries are enforced by
 module structure and would survive being pulled apart when there is a reason to.
 
@@ -140,7 +140,7 @@ The 60-second demo:
 2. Create a project pointed at your own `/demo` URL, or press **Use the demo app**.
 3. Watch the run: journeys discovered, executed, failures reproduced.
 4. Open a finding. Read the steps, the network evidence, the reproduction count.
-5. Set `FORGE_DEMO_FIXED="1"` in `.dev.vars` to repair the defects.
+5. Set `FORGE_DEMO_FIXED="1"` in `apps/web/.dev.vars` to repair the defects.
 6. Press **Verify fix** on the finding.
 7. The exact journey re-runs and passes. The finding is marked resolved.
 
@@ -163,7 +163,7 @@ No Cloudflare login, no Solari key, and no model provider are required to run
 the whole loop locally. Forge degrades honestly: the HTTP executor replaces the
 browser, and heuristic agents replace the model.
 
-To run against a real browser, add a Solari key to `.dev.vars`:
+To run against a real browser, add a Solari key to `apps/web/.dev.vars`:
 
 ```bash
 SOLARI_API_KEY="sk_..."
@@ -171,7 +171,7 @@ SOLARI_API_KEY="sk_..."
 
 Workers AI has no local simulator, so its binding is marked `remote` and the
 model calls in development go to the real service. That needs an account named,
-either in `.dev.vars` or in the environment:
+either in `apps/web/.dev.vars` or in the environment:
 
 ```bash
 CLOUDFLARE_ACCOUNT_ID="<id>"            # in .dev.vars, or exported
@@ -193,22 +193,35 @@ and a session replay link on the finding.
 
 ## Development
 
+Forge is a pnpm workspace. The root package builds nothing itself; every
+script below delegates to the package that owns the work, so they can all be
+run from the repository root.
+
 ```bash
-pnpm typecheck     # tsc --noEmit, for the Worker and the CLI
-pnpm test          # unit tests
-pnpm build         # client + worker bundles
-pnpm build:cli     # the CLI, into cli/dist
-pnpm check         # all three
+pnpm typecheck     # tsc --noEmit, across every workspace package
+pnpm test          # unit tests (@forge/web)
+pnpm build         # client + worker bundles (@forge/web)
+pnpm build:cli     # the CLI, into apps/cli/dist
+pnpm check         # all of the above
 ```
 
-The CLI is a separate package under `cli/`, compiled by its own tsconfig
+To run something in one package only, filter for it:
+
+```bash
+pnpm --filter @forge/web dev
+pnpm --filter @forge/cli build
+```
+
+The CLI is a separate package under `apps/cli/`, compiled by its own tsconfig
 against Node libraries rather than the Worker's. It talks to the REST API in
-`src/server/rest/`, never to the server functions, so it keeps working against
-a Forge that is a version or two ahead.
+`apps/web/src/server/rest/`, never to the server functions, so it keeps working
+against a Forge that is a version or two ahead. It deliberately hand-writes the
+response shapes it reads rather than importing the server's contracts, which is
+why it is a sibling package and not a consumer of one.
 
 ### Changing the schema
 
-`src/server/db/schema.ts` is the single source of truth. Edit it, then:
+`apps/web/src/server/db/schema.ts` is the single source of truth. Edit it, then:
 
 ```bash
 pnpm db:generate           # drizzle-kit writes the migration
@@ -216,41 +229,70 @@ pnpm db:migrate            # apply to the local D1
 pnpm db:migrate:remote     # apply to the deployed D1
 ```
 
-Migrations land in `infrastructure/migrations`, which is the directory
+Migrations land in `apps/web/infrastructure/migrations`, which is the directory
 `wrangler d1 migrations apply` reads, so there is one migration history rather
 than two. There is deliberately no `drizzle-kit push` script: pushing would
 leave the deployed database in a state no migration describes.
 
 ### Layout
 
+A pnpm workspace with two packages. The root holds no source of its own.
+
 ```text
-src/
-  routes/                 TanStack Start file routes (pages, API, demo app)
-  components/             UI: shell, status vocabulary, evidence, live stream
-  server/
-    contracts/            zod schemas shared across every boundary
-    db/                   Drizzle schema and client (source of truth for D1)
-    domain/               run state machine, classification, scoring, budgets
-    security/             target-URL validation (SSRF), repository URL policy
-    execution/            BrowserExecutor interface, Solari CDP, HTTP fallback
-    agent/                Explorer, Operator, Judge, prompts, model router
-    evidence/             R2 artifact store and metadata
-    runs/                 repository, run service, engine, RunSessionDO
-    github/               App auth, webhooks, checks, preview URLs
-    monitoring/           schedules, cadence arithmetic, the cron tick
-    tokens/               API token format, hashing, storage
-    rest/                 the public REST API the CLI and CI talk to
-    demo/                 the deliberately broken fixture application
-    auth.ts               Better Auth (email/password, anonymous, API tokens)
-    api.ts                typed server functions the UI calls
-cli/                      @forge/cli, a separate zero-dependency package
-infrastructure/migrations/
-tests/unit/
+package.json              workspace root; scripts delegate with --filter
+pnpm-workspace.yaml       packages: apps/*, packages/*
+tsconfig.base.json        the strictness both packages share
+apps/
+  web/                    @forge/web - the Worker: app, API, run engine
+    vite.config.ts        wrangler.jsonc, drizzle.config.ts, vitest.config.ts
+    src/
+      routes/             TanStack Start file routes (pages, API, demo app)
+      components/         UI: shell, status vocabulary, evidence, live stream
+      server/
+        contracts/        zod schemas shared across every boundary
+        db/               Drizzle schema and client (source of truth for D1)
+        domain/           run state machine, classification, scoring, budgets
+        security/         target-URL validation (SSRF), repository URL policy
+        execution/        BrowserExecutor interface, Solari CDP, HTTP fallback
+        agent/            Explorer, Operator, Judge, prompts, model router
+        evidence/         R2 artifact store and metadata
+        runs/             repository, run service, engine, RunSessionDO
+        github/           App auth, webhooks, checks, preview URLs
+        monitoring/       schedules, cadence arithmetic, the cron tick
+        tokens/           API token format, hashing, storage
+        rest/             the public REST API the CLI and CI talk to
+        demo/             the deliberately broken fixture application
+        auth.ts           Better Auth (email/password, anonymous, API tokens)
+        api.ts            typed server functions the UI calls
+    infrastructure/migrations/
+    tests/unit/
+  cli/                    @forge/cli - a separate zero-dependency package
+    src/                  flat, Node-only, compiled to apps/cli/dist
 ```
+
+### Imports
+
+Inside `@forge/web`, `@/` is the alias for `apps/web/src`, and it is how every
+import that crosses a directory is written:
+
+```ts
+import { db } from '@/server/db'          // anything in another directory
+import { pill } from './status'           // a sibling stays relative
+```
+
+`../` is not used: a module that moved used to drag a fan of `../../..`
+rewrites behind it, and the depth of a path said nothing about where it
+pointed. The alias is declared once in `apps/web/tsconfig.json` and picked up
+by Vite (`resolve.tsconfigPaths`), by `tsx` for the browser test, and by an
+explicit alias in `vitest.config.ts`.
+
+`@forge/cli` does not use the alias. It compiles with `tsc` to real JavaScript
+that Node runs directly, and `tsc` does not rewrite path aliases in its output,
+so the CLI stays on relative `./x.js` specifiers that resolve at runtime.
 
 ### Cloudflare resources
 
-Before deploying, create the resources and paste the ids into `wrangler.jsonc`:
+Before deploying, create the resources and paste the ids into `apps/web/wrangler.jsonc`:
 
 ```bash
 wrangler d1 create forge
@@ -366,7 +408,7 @@ green says nothing, and a week-long outage does not produce a week of alerts.
 ## Security
 
 **Target URLs are validated before every navigation.** A user-supplied URL that
-a Worker will fetch is an SSRF primitive. `src/server/security/target-url.ts`
+a Worker will fetch is an SSRF primitive. `apps/web/src/server/security/target-url.ts`
 rejects non-HTTP protocols, loopback, private and carrier-NAT ranges,
 link-local (including `169.254.169.254`), unique-local IPv6, internal hostname
 suffixes, and embedded credentials. Loopback is permitted only when

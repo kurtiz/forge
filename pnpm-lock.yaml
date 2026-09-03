@@ -7,6 +7,21 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
+  apps/cli:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
+  apps/web:
     dependencies:
       '@cloudflare/kumo':
         specifier: ^2.12.0

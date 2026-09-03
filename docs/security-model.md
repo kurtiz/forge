@@ -13,7 +13,7 @@ cookie.
 A verification run navigates to user-supplied URLs. In the fetch executor those
 requests originate from the Worker itself.
 
-`src/server/security/target-url.ts` runs before any run is created and again
+`apps/web/src/server/security/target-url.ts` runs before any run is created and again
 before every navigation, including on links discovered inside the target page.
 It rejects:
 
@@ -65,7 +65,7 @@ user → project → run → journey → finding → evidence
 ```
 
 `assertProjectAccess`, `assertRunAccess`, and `assertFindingAccess` in
-`src/server/runs/repository.ts` are the only way to load these objects. No
+`apps/web/src/server/runs/repository.ts` are the only way to load these objects. No
 handler loads by id alone.
 
 R2 objects are never public. Artifacts are served by

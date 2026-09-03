@@ -22,7 +22,7 @@ loop, and it owns the loop, the evidence, and the policy.
 ## Why one Worker
 
 The design document sketches six services. This implementation puts them in one
-Worker as modules under `src/server/`.
+Worker as modules under `apps/web/src/server/`.
 
 Splitting a system into Workers buys independent deployment, resource isolation,
 an ownership boundary, or a security boundary. At this size none of those apply
@@ -230,7 +230,7 @@ clicks a coordinate.
 
 `SolariBrowserExecutor` creates a recorded session over Solari's REST API, then
 attaches to it over CDP through an outbound WebSocket. Actions run as page-realm
-scripts (`src/server/execution/page-script.ts`) that tag elements with
+scripts (`apps/web/src/server/execution/page-script.ts`) that tag elements with
 `data-forge-ref` and dispatch the events frameworks listen for. Console errors,
 uncaught exceptions, failed loads, and document status are collected from CDP
 events as they arrive.
@@ -248,9 +248,9 @@ explanation instead of a fabricated result.
 D1 holds relational state. R2 holds artifacts. D1 stores only R2 keys and
 metadata.
 
-`src/server/db/schema.ts` is the single definition of the relational shape.
+`apps/web/src/server/db/schema.ts` is the single definition of the relational shape.
 Migrations are generated from it by drizzle-kit into
-`infrastructure/migrations`, the same directory wrangler applies, so schema and
+`apps/web/infrastructure/migrations`, the same directory wrangler applies, so schema and
 migrations cannot drift. Better Auth reads the same schema through its Drizzle
 adapter rather than owning a parallel one.
 
