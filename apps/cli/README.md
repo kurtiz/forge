@@ -58,6 +58,41 @@ release artifacts rather than package contents: `bin/` is ignored by git and is
 not in the npm tarball, where `dist/` and a Node shebang remain the right
 answer for `npm install -g @forge/cli`.
 
+## Releasing
+
+Versions are derived from commit messages, not typed in. A `feat:` commit takes
+a minor, a `fix:` takes a patch, and a `!` or a `BREAKING CHANGE:` footer takes
+a major:
+
+```
+feat(cli): add --host to every command
+fix(cli): stop --version printing the help text
+feat(cli)!: drop Node 20
+```
+
+For anything a commit subject cannot say well, write the note by hand instead
+and let the two merge:
+
+```bash
+pnpm tegami        # writes .tegami/<name>.md, commit it with the change
+```
+
+Merging to `main` opens a **Version Packages** pull request holding the bumped
+`package.json`, the generated `CHANGELOG.md`, and the regenerated
+`src/version.ts`. Merging *that* is the release: CI sees a version on `main`
+with no tag pointing at it, compiles all five targets, and publishes a GitHub
+release tagged `@forge/cli@<version>` with the binaries, a `SHA256SUMS` file,
+and the changelog section as its notes.
+
+Nothing is published to npm. The package is `private`, so Tegami versions it
+and writes its changelog but never reaches a registry — removing `private` is
+what turns npm publishing on later.
+
+`src/version.ts` is generated from `package.json`; `forge --version` reads it
+because a compiled binary has no manifest to consult at runtime. The builds
+regenerate it and CI fails a pull request where the two have drifted, so it
+should never need editing by hand.
+
 ## Exit codes
 
 | Code | Meaning |
