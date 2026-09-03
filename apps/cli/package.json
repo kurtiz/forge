@@ -1,6 +1,6 @@
 {
   "name": "@forge/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Verify a deployed web application from your terminal. AI writes the code. Forge proves it works.",
   "type": "module",
   "private": true,
