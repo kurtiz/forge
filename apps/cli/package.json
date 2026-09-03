@@ -14,9 +14,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "pnpm sync-version && tsc -p .",
-    "compile": "pnpm sync-version && bun build src/index.ts --compile --minify --sourcemap --define process.env.DEV=\"false\" --outfile bin/forge",
-    "compile:all": "pnpm sync-version && node scripts/compile.mjs",
+    "build": "pnpm sync-version && bun scripts/build.mjs",
+    "compile": "pnpm sync-version && bun scripts/compile.mjs --native",
+    "compile:all": "pnpm sync-version && bun scripts/compile.mjs",
     "sync-version": "node scripts/sync-version.mjs",
     "check-version": "node scripts/sync-version.mjs --check",
     "typecheck": "tsc -p . --noEmit"
