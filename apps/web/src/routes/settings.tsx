@@ -283,7 +283,28 @@ function GitHubSection({
         <Empty
           size="sm"
           title="Not available on this deployment"
-          description="The GitHub App credentials are not configured, so pull request verification is off."
+          description="Pull request verification needs a GitHub App. Set all three secrets — any one missing turns the integration off — then redeploy."
+          contents={
+            <div className="grid gap-3 text-left">
+              <div className="rounded-md bg-kumo-base p-3 font-mono text-xs text-kumo-secondary">
+                <div className="mb-1 flex items-center gap-1.5 font-sans text-[11px] text-kumo-subtle">
+                  <TerminalWindowIcon size={12} />
+                  Set them
+                </div>
+                wrangler secret put GITHUB_APP_ID
+                <br />
+                wrangler secret put GITHUB_APP_PRIVATE_KEY
+                <br />
+                wrangler secret put GITHUB_WEBHOOK_SECRET
+              </div>
+              <p className="m-0 max-w-[52ch] text-xs text-kumo-subtle">
+                The private key must be PKCS#8. GitHub issues PKCS#1, so convert
+                it once with{' '}
+                <code className="font-mono text-[0.9em]">openssl pkcs8</code>{' '}
+                before pasting it.
+              </p>
+            </div>
+          }
         />
       ) : installations.length === 0 ? (
         <div>
