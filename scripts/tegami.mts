@@ -14,8 +14,9 @@
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { tegami, type TegamiPlugin } from 'tegami'
+import { tegami, type LogGenerator, type TegamiPlugin } from 'tegami'
 import { runCli } from 'tegami/cli'
+import { simpleGenerator } from 'tegami/generators/simple'
 import { github } from 'tegami/plugins/github'
 
 const run = promisify(execFile)
@@ -39,8 +40,34 @@ function syncCliVersion(): TegamiPlugin {
   }
 }
 
+/**
+ * Trailers are addressed to the repository, not to the reader of a release.
+ *
+ * Changelog entries are generated from commit bodies, so anything a commit
+ * carries for tooling -- session links, sign-offs, co-authors -- would be
+ * published as part of the release note. They are stripped here rather than
+ * left out of commits, because the commits are the right place for them.
+ */
+const TRAILER = /^(?:Claude-Session|Co-authored-by|Signed-off-by|Refs|Closes):/i
+
+function withoutTrailers(): LogGenerator {
+  const base = simpleGenerator()
+  return {
+    async generate(options) {
+      const text = await base.generate.call(this, options)
+      return text
+        .split('\n')
+        .filter((line) => !TRAILER.test(line.trim()))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+    },
+  }
+}
+
 const paper = tegami({
   conventionalCommits: true,
+  generator: withoutTrailers(),
   plugins: [
     syncCliVersion(),
     github({
