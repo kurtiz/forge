@@ -54,8 +54,9 @@ forge login [--token <token>] [--host <url>]   store credentials
 forge logout                                   remove them
 forge whoami                                   show the signed-in account
 forge verify --url <url> [--repo <url>]        verify a deployment
-                [--goal <text>] [--project <id>]
-                [--json] [--no-wait] [--timeout <seconds>]
+                [--goal <text>] [--name <text>]
+                [--project <id>] [--json]
+                [--no-wait] [--timeout <seconds>]
 forge projects                                 list projects
 ```
 

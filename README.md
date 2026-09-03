@@ -115,6 +115,88 @@ module structure and would survive being pulled apart when there is a reason to.
 
 ---
 
+## The console
+
+A project, its runs, and the findings they produced. Almost everything here is
+reachable from the CLI and the REST API too; what is not is the part that needs
+a pointer — watching a run go, and looking at what it saw.
+
+### A project
+
+A target URL, plus the things Forge cannot infer from one: the workflow that
+matters most, a public repository to connect a runtime failure to its source,
+and a preview URL template for hosts that do not announce their deployments to
+GitHub. The dashboard opens on the three numbers that answer *is anything broken
+right now* — runs, clean runs, open bugs — over the projects that produced them.
+
+Four panels sit on the project page. None is required for a run, and each one
+exists because discovery on its own gets a specific thing wrong.
+
+| Panel | What it fixes |
+|---|---|
+| **Test accounts** | An application behind a login. One account per role, because what an administrator can reach is not what a member can reach; runs sign in with the one marked default. The password is encrypted with AES-GCM, decrypted only inside the run's Durable Object at the moment it is typed, and never read back — editing with a blank password field keeps the stored one, which is how a label or a login path gets corrected later. |
+| **Planned journeys** | Discovery is a guess, and a different guess each run: the journey a team actually cares about can drop off the list because a model ranked a settings page higher this time. A planned journey runs every time, in priority order, before anything discovered — and *instead of* a discovered one, because the budget is the same either way. |
+| **Sample data** | The Operator invents what it types, and invented data is right up until the application checks it against itself: a form that looks a patient up by phone number will not find one for a number Forge made up. A sample value is somebody who knows the application saying *this one exists*, matched to a field by its label. Never a credential — these are shown back in the console and written into evidence like any other typed value. |
+| **Schedule** | Re-verification on a cadence. See [Scheduled monitoring](#scheduled-monitoring). |
+
+### A run
+
+Nine states, and the page follows them as they happen:
+
+```text
+queued → starting → discovering → testing → investigating → reporting → completed
+                                                                      ↘ failed
+                                        stop, at any point            ↘ canceled
+```
+
+The persisted timeline arrives with the page and the Durable Object streams only
+what happens after it, as server-sent events through a route that checks
+ownership before the stream is opened. When the run reaches a terminal state the
+stream closes and the page reloads its data once, so journeys, findings, and
+evidence appear without polling. **Stop** lands on the next step boundary and
+still releases the browser session.
+
+Findings come first, because they are why the page was opened; then journeys
+with their steps, then the raw agent trace, then the artifacts. Every run
+records which executor produced it and is labelled with what started it —
+`manual`, `cli`, `scheduled`, `pull_request`, or `verify_fix` — so a hand-started
+run is never mistaken for an automated one in a history.
+
+### A finding
+
+The verdict, and then the numbers that decide whether to act on it.
+
+- **Classification** — `confirmed_bug`, `flaky`, `environment`, `agent_error`, `unknown`
+- **Failure class** — `APPLICATION_BUG`, `AUTH_FAILURE`, `NETWORK_FAILURE`, `TIMEOUT`, `ENVIRONMENT_FAILURE`, `BROWSER_FAILURE`, `SOLARI_FAILURE`, `AGENT_ERROR`, `UNKNOWN`
+- **Severity** — critical, high, medium, low
+- **Reproduction** — how many of *n* attempts failed the same way
+- **Confidence**, and where investigation ran, a proposed root cause with the files it points at
+
+Then the steps that produced it, then the evidence behind each one. Two actions:
+**Verify fix** re-runs that exact journey against the current deployment and
+resolves the finding when it passes, and **Dismiss** closes one you have decided
+not to act on without pretending it was fixed.
+
+### Evidence
+
+Seven kinds — `screenshot`, `recording`, `console`, `network`, `page`, `action`,
+`source` — written to R2 under a run-scoped prefix, with only the key and its
+metadata in D1. Nothing is public: artifacts are served through an authenticated
+route that re-checks the owning run on every fetch. Screenshots are a sequence
+rather than a gallery — the entry page, then each journey's final state — so
+they get a filmstrip with a viewer behind it instead of a tab full of PNG at an
+opaque URL. Artifacts are retained for 14 days; recordings are heavy and rarely
+read after a week.
+
+### Accounts
+
+Email and password, GitHub, or guest, all producing the same user row — see
+[Security](#security) for why the guest door exists only in development.
+**Settings** holds the two things that reach Forge from outside the browser: API
+tokens for the CLI and CI, and the GitHub App connection.
+
+---
+
 ## Demo
 
 The repository ships a deliberately broken application at `/demo` ("Northbeam"),
@@ -320,11 +402,47 @@ pnpm deploy
 Keep development, staging, and production on separate D1 databases, R2 buckets,
 and Solari keys. A development run must never be able to reach production data.
 
+### Configuration
+
+Local values live in `apps/web/.dev.vars` (copy `.dev.vars.example`); deployed
+ones are Wrangler secrets. Only the first is required. Forge degrades honestly
+without the rest and says so in the run rather than in the documentation.
+
+| Variable | |
+|---|---|
+| `BETTER_AUTH_SECRET` | **Required.** Session signing key |
+| `FORGE_ENV` | `development` allows loopback targets and registers guest sign-in |
+| `APP_URL` | The public origin. OAuth callbacks and the run links handed to the CLI are built from it |
+| `SOLARI_API_KEY` | Real browser sessions and repository investigation. Without it: the HTTP executor, and no investigation |
+| `SOLARI_BASE_URL` | Overrides the Solari host, for staging or a self-hosted gateway |
+| `FORGE_CREDENTIAL_KEY` | Encrypts stored test-account passwords. Needed only to store an application login |
+| `CLOUDFLARE_ACCOUNT_ID` | Names the account for the remote Workers AI binding in development |
+| `AI_GATEWAY_URL` · `AI_GATEWAY_KEY` · `AI_GATEWAY_MODEL` | Point the agents at an OpenAI-compatible endpoint instead of Workers AI |
+| `GITHUB_APP_ID` · `GITHUB_APP_PRIVATE_KEY` · `GITHUB_WEBHOOK_SECRET` · `GITHUB_APP_SLUG` | Pull request verification; needed together |
+| `GITHUB_CLIENT_ID` · `GITHUB_CLIENT_SECRET` | "Continue with GitHub" on the sign-in page |
+| `FORGE_DEMO_FIXED` | Repairs the seeded demo defects, so **Verify fix** has something to pass |
+
+The bindings, all declared in `apps/web/wrangler.jsonc`:
+
+| Binding | |
+|---|---|
+| `DB` | D1 — projects, runs, journeys, findings, evidence metadata, tokens, schedules |
+| `EVIDENCE` | R2 — artifacts, under a run-scoped key prefix |
+| `RUN_SESSION` | Durable Object — one per run: the execution loop, the event sequence, the cancel flag, the clients watching |
+| `AI` | Workers AI. The one binding marked `remote`, because it has no local simulator |
+| `CLEANUP_QUEUE` | Evidence purge after a project is deleted, with a dead-letter queue behind it |
+| `ANALYTICS` | Analytics Engine — one datapoint per completed run: findings, confirmation rate, actions, model calls |
+| cron `*/15 * * * *` | The monitoring tick. Every cadence shares it |
+
+Budgets are capped per run and enforced in `domain/budget`: 6 journeys, 20 model
+calls, 120 browser actions, 15 minutes of browser time, 3 reproduction attempts,
+24 MB of evidence, 10 minutes of sandbox.
+
 ---
 
 ## Beyond the console
 
-The verification loop is the same in all three of these. Only the trigger, and
+The verification loop is the same in every one of these. Only the trigger, and
 where the result is delivered, changes.
 
 ### CLI
@@ -353,16 +471,89 @@ View:
 https://forge.dev/runs/run_123
 ```
 
-`forge verify` exits 1 when Forge confirms a defect and 0 otherwise, so it is a
-CI gate as it stands. A flaky or environmental failure is printed but does not
-fail the command, because blocking a merge on a rate limit teaches people to
-skip the check.
+| Command | |
+|---|---|
+| `forge verify --url <url>` | start a run, watch it, print what Forge can prove |
+| `forge login [--token <t>] [--host <url>]` | check a token and store it |
+| `forge logout` | remove the stored token |
+| `forge whoami` | the account a token belongs to |
+| `forge projects` | id, name, and target of every project the token can reach |
+
+| `forge verify` option | |
+|---|---|
+| `--url <url>` | the deployment to verify; the project is found or created from it |
+| `--project <id>` | verify an existing project instead of a URL |
+| `--repo <url>` | public GitHub repository, to connect failures to source |
+| `--goal <text>` | the workflow that matters most |
+| `--name <text>` | project name, when one is created |
+| `--json` | the whole report as JSON, on stdout |
+| `--no-wait` | start the run and exit without watching it |
+| `--timeout <seconds>` | give up waiting; the run continues (default 900) |
+
+The exit code is the contract: **0** no confirmed defects, **1** confirmed
+defects or the run itself failed, **2** bad usage or no credentials. So it is a
+CI gate as it stands, with no wrapper script:
+
+```yaml
+- name: Verify the preview
+  run: npx @forge/cli verify --url "${{ steps.deploy.outputs.url }}"
+  env:
+    FORGE_TOKEN: ${{ secrets.FORGE_TOKEN }}
+```
+
+A flaky or environmental failure is printed but does not fail the command,
+because blocking a merge on a rate limit teaches people to skip the check. If
+you would rather draw that line yourself, `--json` prints the whole report:
+
+```bash
+forge verify --url https://preview.example.com --json | jq '.findings[].classification'
+```
 
 Tokens are issued in the console under **Settings**, stored as a SHA-256 hash,
-and shown exactly once. `FORGE_TOKEN` overrides the stored credential, which is
-what CI should use. The CLI has no dependencies: it is Node's own fetch and
-about six hundred lines, because a verification tool installed on every
-developer machine and CI runner should not bring a package tree with it.
+and shown exactly once. `forge login` checks a token against the API before
+writing it to `~/.forge/config.json` with owner-only permissions — storing one
+unchecked turns a typo into a confusing failure much later, in CI, on someone
+else's day. `FORGE_TOKEN` and `FORGE_HOST` override the stored file, which is
+what CI should use.
+
+The CLI has no dependencies: Node's own fetch and about eight hundred lines,
+because a verification tool installed on every developer machine and CI runner
+should not bring a package tree with it. It polls the REST API rather than
+subscribing to the console's stream — a poll survives a buffering proxy, a
+sleeping laptop, and a CI runner that drops idle connections — writes progress
+to stderr and results to stdout so `--json | jq` works while the run is still
+going, and emits no colour when the stream is not a TTY or `NO_COLOR` is set.
+
+### REST API
+
+What the CLI talks to, and what anything else should. Deliberately separate from
+the server functions the console uses: those are a private typed transport
+between this application's own client and server, while this is a public
+contract that has to keep working against a Forge a version or two ahead.
+
+Authentication is `Authorization: Bearer forge_...`, resolved to exactly the
+same user a console session yields, so every ownership check here is the one the
+console already uses. A request naming someone else's run gets 404 rather than
+403: a token must not be able to tell "not yours" from "does not exist".
+
+| Endpoint | |
+|---|---|
+| `POST /api/v1/runs` | start a run. `url` or `projectId`, plus optional `repo`, `goal`, `name`, `idempotencyKey`. A URL is enough — the project already pointing at it is reused, or one is created, so the terminal never has to know Forge's object model. → `201` |
+| `GET /api/v1/runs/:id` | run, project, journeys, and findings in one request, so a poll costs one round trip per tick |
+| `GET /api/v1/projects` | what this token can verify |
+| `DELETE /api/v1/projects/:id` | → `202`: the project is invisible immediately, and its evidence leaves R2 on the cleanup queue |
+| `GET /api/v1/whoami` | the account behind a token |
+
+```bash
+curl -X POST https://forge.dev/api/v1/runs \
+  -H "Authorization: Bearer $FORGE_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://preview.example.com","goal":"checkout"}'
+```
+
+Two more routes take the same credentials and exist for the console:
+`GET /api/runs/:id/stream`, the run's server-sent events, and
+`GET /api/evidence/:id`, one artifact with the owning run re-checked.
 
 ### GitHub
 
@@ -492,12 +683,17 @@ Shipped:
 - Logins for gated applications: an encrypted test account, a deterministic
   sign-in before discovery, and auth-wall detection so an application Forge
   cannot get into is reported as such instead of as a pile of defects
-
+- Project configuration that outlives a bad guess: journeys a project names for
+  itself, sample values that are true of the target, one test account per role
+- Dismissing a finding, cancelling a run, and deleting a project along with
+  every artifact it produced
 - GitHub App: a pull request's preview deployment is verified and the result
   posted as a check on the commit
 - A CLI, `forge verify`, with an exit code CI can gate on
 - Scheduled monitoring: the same engine on a timer, with notifications on the
   transitions rather than on every tick
+- A REST API and personal access tokens, and a datapoint per run in Analytics
+  Engine to say whether the agent is getting better or worse
 
 Next, roughly in order:
 
@@ -505,3 +701,14 @@ Next, roughly in order:
   first-class metric
 - Proposed patches, applied in a disposable sandbox and verified before a PR is
   ever opened
+
+---
+
+## Further reading
+
+- [`docs/architecture.md`](docs/architecture.md) — the three layers, and why the
+  boundaries fall where they do
+- [`docs/agent-design.md`](docs/agent-design.md) — four agents, two of which use
+  no model at all
+- [`docs/security-model.md`](docs/security-model.md) — the threats a system that
+  points a browser at a stranger's URL actually has
