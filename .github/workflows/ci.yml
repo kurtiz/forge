@@ -14,11 +14,16 @@ jobs:
     name: Typecheck, test, build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      # Pinned here rather than in a "packageManager" field, because that field
+      # also pins every local pnpm: pnpm refuses to run when the installed
+      # version disagrees with it. CI wants one fixed version, a laptop does not.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -37,11 +42,13 @@ jobs:
     name: Compile the CLI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -60,7 +67,7 @@ jobs:
           ./apps/cli/bin/forge --version
           ./apps/cli/bin/forge --help > /dev/null
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: forge-linux-x64
           path: apps/cli/bin/forge

@@ -109,6 +109,13 @@ answers `--version` is what a pull request needs; the matrix is a release cost.
 - [`AGENTS.md`](../AGENTS.md) — how to write a changelog file, for agents and
   for people
 
+Both workflows pin pnpm with the `version` input on `pnpm/action-setup` rather
+than with a `packageManager` field in `package.json`. That field is not scoped
+to CI: pnpm reads it locally too and refuses to run when the installed version
+disagrees with it, which turns a shared release setting into a constraint on
+everyone's machine. Pinning the major means CI follows 11.x releases; change it
+to a full version to hold one exactly.
+
 ## Things worth knowing
 
 **The first release scans all of history.** With no tags in the repository,
