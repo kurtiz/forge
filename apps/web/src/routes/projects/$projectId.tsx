@@ -17,6 +17,7 @@ import { RelativeTime } from '@/components/app/relative-time'
 import { ExecutorNotice } from '@/components/app/executor-notice'
 import { SchedulePanel } from '@/components/app/schedule-panel'
 import { CredentialsPanel } from '@/components/app/credentials-panel'
+import { RequestHeadersPanel } from '@/components/app/request-headers-panel'
 import { JourneyPlanPanel } from '@/components/app/journey-plan-panel'
 import { SampleDataPanel } from '@/components/app/sample-data-panel'
 import {
@@ -35,8 +36,15 @@ export const Route = createFileRoute('/projects/$projectId')({
 })
 
 function ProjectPage() {
-  const { project, runs, schedule, credentials, plannedJourneys, sampleValues } =
-    Route.useLoaderData()
+  const {
+    project,
+    runs,
+    schedule,
+    credentials,
+    plannedJourneys,
+    sampleValues,
+    headers,
+  } = Route.useLoaderData()
   const { session } = Route.useRouteContext()
   const router = useRouter()
   const confirm = useConfirm()
@@ -203,6 +211,17 @@ function ProjectPage() {
           meta={credentials.length > 0 ? `${credentials.length} stored` : undefined}
         >
           <CredentialsPanel projectId={project.id} credentials={credentials} />
+        </Section>
+
+        <Section
+          title="Request headers"
+          meta={headers.length > 0 ? `${headers.length} sent` : undefined}
+        >
+          <RequestHeadersPanel
+            projectId={project.id}
+            headers={headers}
+            targetUrl={project.targetUrl}
+          />
         </Section>
 
         <Section title="Monitoring">

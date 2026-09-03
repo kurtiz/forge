@@ -145,6 +145,7 @@ export type JourneyStep = z.infer<typeof journeyStepSchema>
 export const failureClassSchema = z.enum([
   'APPLICATION_BUG',
   'AUTH_FAILURE',
+  'BOT_CHALLENGE',
   'NETWORK_FAILURE',
   'TIMEOUT',
   'ENVIRONMENT_FAILURE',
@@ -425,6 +426,32 @@ export const updateSampleValueInputSchema = z.object({
 })
 export type UpdateSampleValueInput = z.infer<typeof updateSampleValueInputSchema>
 
+/**
+ * A header Forge attaches to every request it makes to this project's target.
+ *
+ * The value is never in this shape. Like a stored password it is encrypted at
+ * rest and read only inside the run's Durable Object, so a header set cannot
+ * escape through an API response by being forgotten in a mapper. Editing one
+ * means replacing it.
+ */
+export const projectHeaderSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+export type ProjectHeader = z.infer<typeof projectHeaderSchema>
+
+export const createProjectHeaderInputSchema = z.object({
+  projectId: z.string().min(3).max(64),
+  name: z.string().trim().min(1, 'Name the header').max(64),
+  value: z.string().trim().min(1, 'Give the header a value').max(2048),
+})
+export type CreateProjectHeaderInput = z.infer<
+  typeof createProjectHeaderInputSchema
+>
+
 export const createProjectInputSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(60),
   targetUrl: z.string().trim().min(1, 'Target URL is required'),
@@ -542,8 +569,28 @@ export type RunReport = {
   project: Project
   journeys: Journey[]
   findings: Finding[]
+  /**
+   * What to do about the finding that decided this run, if there was one.
+   *
+   * One rather than all of them, for the same reason the GitHub check carries
+   * one: this is read in a CI log, and a log that prints five briefs gets
+   * scrolled past. The rest are on the finding pages.
+   */
+  remediation: RunRemediation | null
   /** Console URL for this run. */
   url: string
+}
+
+/** The fix instructions as they cross the API, flattened for a client. */
+export type RunRemediation = {
+  findingId: string
+  /** Console URL for the finding this belongs to. */
+  findingUrl: string
+  headline: string
+  owner: 'application' | 'infrastructure' | 'forge' | 'none'
+  steps: string[]
+  /** Paste-ready brief for a coding agent. Null when there is nothing to fix. */
+  prompt: string | null
 }
 
 /* ----------------------------------------------------------- monitoring */

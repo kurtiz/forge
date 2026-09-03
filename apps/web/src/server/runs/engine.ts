@@ -25,6 +25,11 @@ import {
   type FailureSignal,
 } from '@/server/domain/analysis'
 import { assertTransition } from '@/server/domain/run-state'
+import {
+  CHALLENGE_VENDOR_LABEL,
+  detectBotChallenge,
+  type BotChallenge,
+} from '@/server/domain/challenge'
 import { createExecutor, type BrowserExecutor } from '@/server/execution'
 import type { ActionResult, PageObservation } from '@/server/execution/types'
 import {
@@ -268,7 +273,25 @@ export async function executeRun(
     await setStatus('starting', 'Starting the verification run')
     await repo.updateRun(input.runId, { startedAt: new Date().toISOString() })
 
-    executor = await createExecutor()
+    /*
+     * The project's verification headers, decrypted here and nowhere else.
+     *
+     * Read before the executor is built because they belong to every request
+     * it will make, including the first one. Their values are registered as
+     * secrets before anything can be emitted, so a header that an application
+     * echoes back into a page, a console error, or a stored artifact is
+     * redacted the same way a password would be.
+     */
+    const verificationHeaders = await readVerificationHeaders(
+      input.projectId,
+      secrets,
+      emit,
+    )
+
+    executor = await createExecutor({
+      headers: verificationHeaders,
+      targetOrigin: originOf(input.targetUrl),
+    })
     await repo.updateRun(input.runId, { sessionId: executor.sessionId })
     await emit(
       'run.started',
@@ -277,6 +300,18 @@ export async function executeRun(
         : 'HTTP executor started (no Solari credentials configured)',
       { executor: executor.kind, sessionId: executor.sessionId },
     )
+
+    const headerNames = Object.keys(verificationHeaders)
+    if (headerNames.length > 0) {
+      // Names only. The values are secrets and are already registered as such.
+      await emit(
+        executor.headersAttached ? 'headers.attached' : 'headers.unavailable',
+        executor.headersAttached
+          ? `Sending ${headerNames.length} verification header${headerNames.length === 1 ? '' : 's'} to ${originOf(input.targetUrl)}: ${headerNames.join(', ')}.`
+          : `The browser provider refused to attach ${headerNames.join(', ')}. This run makes plain requests, so anything those headers were opening is closed to it.`,
+        { headers: headerNames },
+      )
+    }
 
     /* --------------------------------------------------------------- sign in */
 
@@ -375,6 +410,37 @@ export async function executeRun(
     })
 
     await captureScreenshot(executor, input.runId, null, 'Entry page')
+
+    /*
+     * Checked before the status, because a challenge is not an outage.
+     *
+     * It answers 200 as happily as 403, and the run that follows one is worse
+     * than a run that stops: journeys get discovered from the challenge screen
+     * ("Verify Security", "View Privacy Policy" - the words Cloudflare puts
+     * there), none of them find a control, and the report says the application
+     * has nothing on it. Every number in that report is about the interstitial.
+     * So the run ends here, with the one finding that is true.
+     */
+    const challenge = detectBotChallenge(entry.observation)
+    if (challenge) {
+      await recordChallengeBlocked(input, challenge, entry.observation, hooks)
+      await setStatus('reporting', 'Writing the report')
+      await finish(
+        input.runId,
+        summariseRun({
+          total: 0,
+          passed: 0,
+          failed: 0,
+          skipped: 0,
+          findings: 1,
+          authFailed: Boolean(authFailure),
+          blockedByChallenge: true,
+        }),
+        hooks,
+      )
+      await setStatus('completed', 'Run complete')
+      return
+    }
 
     if (!entry.ok) {
       // The target is unreachable or erroring before any journey runs. That is
@@ -928,6 +994,117 @@ async function captureScreenshot(
     label,
     body: { bytes: shot.bytes, contentType: shot.contentType },
   })
+}
+
+/**
+ * Decrypts the project's verification headers for this run.
+ *
+ * Never throws. A header that will not decrypt is a rotated or missing
+ * `FORGE_CREDENTIAL_KEY`, and the useful response to that is a run that goes
+ * ahead without it and says so - which usually ends in a bot-challenge finding
+ * that names the header as the thing to check. Failing the run instead would
+ * report nothing at all about the application.
+ */
+async function readVerificationHeaders(
+  projectId: string,
+  secrets: string[],
+  emit: (
+    type: string,
+    message: string,
+    data?: Record<string, JsonValue>,
+  ) => Promise<void>,
+): Promise<Record<string, string>> {
+  const stored = await repo.readProjectHeaders(projectId).catch(() => [])
+  if (stored.length === 0) return {}
+
+  const headers: Record<string, string> = {}
+  const unreadable: string[] = []
+
+  for (const row of stored) {
+    try {
+      const value = await decryptCredential(row.valueEncrypted)
+      // Registered before the value can reach a request, a page, or an event.
+      secrets.push(value)
+      headers[row.name] = value
+    } catch {
+      unreadable.push(row.name)
+    }
+  }
+
+  if (unreadable.length > 0) {
+    await emit(
+      'headers.unavailable',
+      `Could not decrypt ${unreadable.join(', ')}. The run continues without ${unreadable.length === 1 ? 'it' : 'them'}; the encryption key may have changed.`,
+      { headers: unreadable },
+    )
+  }
+
+  return headers
+}
+
+/** Origin only: a verification header never travels past it. */
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin
+  } catch {
+    return url
+  }
+}
+
+/**
+ * Records the one thing a blocked run knows.
+ *
+ * Written directly rather than judged: there is no journey, no reproduction,
+ * and no page for a model to reason about, and a Judge asked to explain an
+ * interstitial will invent an application to blame. Classified `environment`
+ * so it cannot fail a pull-request check - the application was never shown to
+ * be broken, and blocking a merge on a WAF rule teaches people to ignore the
+ * check. Severity stays high because the run verified nothing at all, and that
+ * has to be impossible to skim past.
+ */
+async function recordChallengeBlocked(
+  input: EngineInput,
+  challenge: BotChallenge,
+  observation: PageObservation,
+  hooks: EngineHooks,
+): Promise<void> {
+  const vendor = CHALLENGE_VENDOR_LABEL[challenge.vendor]
+  const host = hostOf(input.targetUrl)
+
+  const finding = await repo.insertFinding({
+    runId: input.runId,
+    journeyId: null,
+    title: `${vendor} bot protection blocked the run`,
+    description:
+      `${vendor} answered ${host} with a bot challenge ("${challenge.marker}") instead of the application, ` +
+      `at HTTP ${observation.status || 'no status'}. Forge does not solve or evade bot challenges, so the run stopped here: ` +
+      'no page of the application was loaded, no journey was discovered from it, and nothing was verified. ' +
+      'Point Forge at an environment that does not challenge it, or let it through this one.',
+    failureClass: 'BOT_CHALLENGE',
+    classification: 'environment',
+    severity: 'high',
+    confidence: 0.95,
+    reproductionAttempts: 1,
+    reproductionFailures: 1,
+    rootCause: null,
+    rootCauseConfidence: null,
+    affectedFiles: [],
+  })
+
+  await hooks.emit(
+    'finding.created',
+    `Blocked by ${vendor} bot protection: ${challenge.marker}`,
+    { findingId: finding.id, classification: 'environment' },
+  )
+}
+
+/** Host only, for a sentence that should not carry a query string. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
 }
 
 async function recordUnreachable(

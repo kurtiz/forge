@@ -365,6 +365,37 @@ export const projectSampleValues = sqliteTable(
   ],
 )
 
+/**
+ * Headers a run sends to this project's target.
+ *
+ * Separate from the project row because there can be several - Cloudflare
+ * Access needs two - and because the value is a secret that must never travel
+ * with the project through an API response. One value per name per project,
+ * enforced by the unique index: two rows for the same header would race.
+ */
+export const projectHeaders = sqliteTable(
+  'project_headers',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** Case as the operator wrote it, e.g. `CF-Access-Client-Id`. */
+    name: text('name').notNull(),
+    /**
+     * AES-GCM ciphertext, base64. Written by `encryptCredential`, read only
+     * inside the run Durable Object, and never returned by the API.
+     */
+    valueEncrypted: text('value_encrypted').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('project_headers_project_idx').on(table.projectId, table.createdAt),
+    uniqueIndex('project_headers_name_idx').on(table.projectId, table.name),
+  ],
+)
+
 /* --------------------------------------------------------------- journeys */
 
 export const journeys = sqliteTable(

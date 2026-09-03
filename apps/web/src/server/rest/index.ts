@@ -16,7 +16,11 @@
 import { z } from 'zod'
 import {
   apiCreateRunSchema,
+  type Finding,
+  type Journey,
   type Project,
+  type Run,
+  type RunRemediation,
   type RunReport,
 } from '@/server/contracts'
 import { currentUser } from '@/server/auth'
@@ -27,6 +31,7 @@ import {
   normaliseRepoUrl,
   UnsafeTargetError,
 } from '@/server/security'
+import { remediationFor } from '@/server/domain/remediation'
 import * as repo from '@/server/runs/repository'
 import { startRun } from '@/server/runs/service'
 import { requestProjectDeletion } from '@/server/cleanup'
@@ -185,9 +190,11 @@ export async function getRunHandler(
   if (user instanceof Response) return user
 
   const { run, project } = await repo.assertRunAccess(runId, user.id)
-  const [journeys, findings] = await Promise.all([
+  const [journeys, findings, steps, headers] = await Promise.all([
     repo.listJourneys(run.id),
     repo.listFindings(run.id),
+    repo.listJourneySteps(run.id),
+    repo.listProjectHeaders(project.id),
   ])
 
   const report: RunReport = {
@@ -195,10 +202,69 @@ export async function getRunHandler(
     project,
     journeys,
     findings,
+    remediation: leadingRemediation({
+      findings,
+      journeys,
+      steps,
+      run,
+      headerNames: headers.map((header) => header.name),
+      baseUrl: consoleUrl(''),
+    }),
     url: consoleUrl(`/runs/${run.id}`),
   }
 
   return json(report)
+}
+
+/**
+ * The fix instructions for the finding that decided this run.
+ *
+ * A confirmed defect first, and otherwise whatever else was recorded - because
+ * the finding a CI log most needs to explain is often the one classified
+ * `environment`: a run blocked by bot protection verified nothing at all, and
+ * printing only "1 further failure" leaves the reader with no idea what to do.
+ */
+function leadingRemediation(input: {
+  findings: Finding[]
+  journeys: Journey[]
+  steps: Array<{
+    journeyId: string
+    action: string
+    target: string | null
+    expected: string | null
+    actual: string | null
+    status: 'passed' | 'failed' | 'skipped'
+  }>
+  run: Run
+  headerNames: string[]
+  baseUrl: string
+}): RunRemediation | null {
+  const finding =
+    input.findings.find((f) => f.classification === 'confirmed_bug') ??
+    input.findings[0]
+  if (!finding) return null
+
+  const journey =
+    input.journeys.find((j) => j.id === finding.journeyId) ?? null
+
+  const remediation = remediationFor({
+    finding,
+    run: { targetUrl: input.run.targetUrl, executor: input.run.executor },
+    journey: journey
+      ? { name: journey.name, goal: journey.goal, entryPath: journey.entryPath }
+      : null,
+    steps: input.steps.filter((s) => s.journeyId === finding.journeyId),
+    verificationHeaders: input.headerNames,
+  })
+
+  return {
+    findingId: finding.id,
+    findingUrl: `${input.baseUrl}/findings/${finding.id}`,
+    headline: remediation.headline,
+    owner: remediation.owner,
+    steps: remediation.steps,
+    prompt: remediation.prompt,
+  }
 }
 
 /** `GET /api/v1/projects` - what this token can verify. */

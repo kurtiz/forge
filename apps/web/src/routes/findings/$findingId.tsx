@@ -17,6 +17,7 @@ import {
 } from '@/components/app/status'
 import { RelativeTime } from '@/components/app/relative-time'
 import { EvidenceList } from '@/components/app/evidence-list'
+import { FixPanel } from '@/components/app/fix-prompt'
 import { dismissFinding, getFinding, verifyFix } from '@/server/api'
 
 export const Route = createFileRoute('/findings/$findingId')({
@@ -29,8 +30,16 @@ export const Route = createFileRoute('/findings/$findingId')({
 })
 
 function FindingPage() {
-  const { finding, run, project, journey, steps, evidence, fixAttempts } =
-    Route.useLoaderData()
+  const {
+    finding,
+    run,
+    project,
+    journey,
+    steps,
+    evidence,
+    fixAttempts,
+    remediation,
+  } = Route.useLoaderData()
   const { session } = Route.useRouteContext()
   const router = useRouter()
   const [busy, setBusy] = useState<'verify' | 'dismiss' | null>(null)
@@ -216,6 +225,8 @@ function FindingPage() {
             ) : null}
           </Section>
         ) : null}
+
+        <FixPanel remediation={remediation} />
 
         {steps.length > 0 ? (
           <Section title="Steps to reproduce">

@@ -150,6 +150,50 @@ describe('renderCheckReport', () => {
     expect(report.summary).toContain('no JavaScript ran')
   })
 
+  it('carries the fix brief for the finding that decided the check', () => {
+    const report = renderCheckReport({
+      run: run(),
+      journeys: [journey('failed', 'Checkout')],
+      findings: [finding({ journeyId: 'jny_Checkout_failed' })],
+      steps: [
+        {
+          journeyId: 'jny_Checkout_failed',
+          action: 'Click',
+          target: 'Apply coupon',
+          expected: 'The discount is applied',
+          actual: 'The page returned HTTP 500',
+          status: 'failed',
+        },
+      ],
+      baseUrl: BASE,
+    })
+
+    expect(report.summary).toContain('How to fix')
+    expect(report.summary).toContain('[FAIL] Click "Apply coupon"')
+    expect(report.summary).toContain('Do not change tests')
+  })
+
+  it('names the service when a wall stopped the run, and forbids getting past it', () => {
+    const report = renderCheckReport({
+      run: run(),
+      journeys: [],
+      findings: [
+        finding({
+          title: 'Cloudflare bot protection blocked the run',
+          description: 'Cloudflare answered pr-42.example.dev with a bot challenge.',
+          failureClass: 'BOT_CHALLENGE',
+          classification: 'environment',
+          journeyId: null,
+        }),
+      ],
+      baseUrl: BASE,
+    })
+
+    // Environment, so it reports without blocking the merge.
+    expect(report.conclusion).toBe('neutral')
+    expect(report.summary).toContain('Do not attempt to solve, bypass')
+  })
+
   it('escapes a pipe so a finding title cannot break the table', () => {
     const report = renderCheckReport({
       run: run(),

@@ -57,6 +57,7 @@ const KNOWN_FLAGS = new Set([
   'token',
   'host',
   'json',
+  'fix',
   'no-wait',
   'timeout',
   'help',
@@ -79,6 +80,7 @@ ${bold('Verify options')}
   --name <text>      project name, when one is created
   --project <id>     verify an existing project instead of a URL
   --json             print the full report as JSON
+  --fix              print the coding-agent prompt for the leading finding
   --no-wait          start the run and exit without waiting
   --timeout <secs>   give up waiting after this long (default 900)
 
@@ -308,7 +310,7 @@ async function verify(args: Args): Promise<number> {
   } else if (view) {
     view.finish(report)
   } else {
-    printReport(report)
+    printReport(report, { fixPrompt: boolFlag(args, 'fix') })
   }
 
   const bugs = report.findings.filter((f) => f.classification === 'confirmed_bug')

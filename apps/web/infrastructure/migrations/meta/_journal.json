@@ -43,6 +43,13 @@
       "when": 1788376314175,
       "tag": "0005_project_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788440185754,
+      "tag": "0006_project_headers",
+      "breakpoints": true
     }
   ]
 }

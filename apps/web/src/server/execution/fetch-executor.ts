@@ -13,12 +13,13 @@ import {
   ExecutorError,
   type ActionResult,
   type BrowserExecutor,
+  type ExecutorOptions,
   type PageElement,
   type PageKey,
   type PageObservation,
   type Screenshot,
 } from './types'
-import { assertSafeTargetUrl } from '@/server/security'
+import { assertSafeTargetUrl, headersForUrl } from '@/server/security'
 
 type ParsedForm = {
   ref: string
@@ -49,6 +50,12 @@ const USER_AGENT =
 
 const MAX_BODY_BYTES = 3 * 1024 * 1024
 
+/** Statuses that carry a `Location` worth following. */
+const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308])
+
+/** How many hops a single request may take before it is a loop. */
+const MAX_REDIRECTS = 10
+
 /**
  * Per-request ceiling. A target that never answers would otherwise stall the
  * run indefinitely: the run budget is only checked between journeys, so it
@@ -59,6 +66,23 @@ const REQUEST_TIMEOUT_MS = 20_000
 export class FetchBrowserExecutor implements BrowserExecutor {
   readonly kind = 'fetch' as const
   readonly sessionId = null
+  /** This executor writes its own request headers; nothing can refuse them. */
+  readonly headersAttached = true
+
+  /**
+   * The project's verification headers, and the only origin they may reach.
+   *
+   * Applied per request rather than once at construction, because this executor
+   * follows links and a link can point anywhere. `headersForUrl` is what makes
+   * the decision, and it decides on the URL that is about to be fetched.
+   */
+  private readonly extraHeaders: Readonly<Record<string, string>>
+  private readonly targetOrigin: string | null
+
+  constructor(options: ExecutorOptions = {}) {
+    this.extraHeaders = options.headers ?? {}
+    this.targetOrigin = options.targetOrigin ?? null
+  }
 
   private cookies = new Map<string, string>()
   private current: PageObservation | null = null
@@ -229,6 +253,104 @@ export class FetchBrowserExecutor implements BrowserExecutor {
     return this.request(action, 'POST', body)
   }
 
+  /** Whether this run has a secret that must not follow a redirect off-origin. */
+  private get hasHeaders(): boolean {
+    return Boolean(this.targetOrigin) && Object.keys(this.extraHeaders).length > 0
+  }
+
+  /**
+   * Performs one request, redirects included.
+   *
+   * Two paths, and the reason is the secret. Without verification headers there
+   * is nothing to protect, so the platform follows redirects itself - faster,
+   * and the behaviour every run has had until now.
+   *
+   * With them, redirects are followed by hand. `redirect: 'follow'` re-sends
+   * the request headers to wherever the Location points, and an application
+   * that answers `/dashboard` with a redirect to an identity provider - or a
+   * compromised one that redirects anywhere at all - would hand that provider
+   * the secret that opens the edge. Each hop is decided separately: the target
+   * URL is re-validated, and the headers are re-computed for the origin the hop
+   * is actually going to.
+   */
+  private async send(
+    url: URL,
+    method: 'GET' | 'POST',
+    headers: Headers,
+    body?: URLSearchParams,
+  ): Promise<Response> {
+    // One deadline for the whole chain: a redirect loop that renews the clock
+    // on every hop is a request that never ends.
+    const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+
+    if (!this.hasHeaders) {
+      return fetch(url.toString(), {
+        method,
+        headers,
+        body: body?.toString(),
+        redirect: 'follow',
+        signal,
+      })
+    }
+
+    let current = url
+    let currentMethod = method
+    let currentBody = body
+
+    for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
+      const hopHeaders = new Headers(headers)
+      for (const name of Object.keys(this.extraHeaders)) hopHeaders.delete(name)
+      const extra = headersForUrl(
+        current.toString(),
+        this.extraHeaders,
+        this.targetOrigin ?? '',
+      )
+      for (const [name, value] of Object.entries(extra)) {
+        hopHeaders.set(name, value)
+      }
+      if (!currentBody) hopHeaders.delete('content-type')
+
+      const response = await fetch(current.toString(), {
+        method: currentMethod,
+        headers: hopHeaders,
+        body: currentBody?.toString(),
+        redirect: 'manual',
+        signal,
+      })
+
+      const location = response.headers.get('location')
+      if (!REDIRECT_STATUS.has(response.status) || !location) return response
+
+      // Cookies set on the way through are what a sign-in redirect is for.
+      this.storeCookies(response)
+      const next = assertSafeTargetUrl(new URL(location, current).toString())
+
+      /*
+       * A 303, and in practice a 301 or 302, turns a POST into a GET with no
+       * body - which is exactly what a browser does after a form submission,
+       * and what the login flows this executor walks depend on.
+       */
+      if (response.status !== 307 && response.status !== 308) {
+        currentMethod = 'GET'
+        currentBody = undefined
+      }
+
+      if (this.cookies.size > 0) {
+        headers.set(
+          'cookie',
+          [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
+        )
+      }
+
+      current = next
+    }
+
+    throw new ExecutorError(
+      `More than ${MAX_REDIRECTS} redirects from ${url.pathname}.`,
+      false,
+    )
+  }
+
   private async request(
     url: URL,
     method: 'GET' | 'POST',
@@ -238,6 +360,14 @@ export class FetchBrowserExecutor implements BrowserExecutor {
       'user-agent': USER_AGENT,
       accept: 'text/html,application/xhtml+xml',
     })
+    if (this.targetOrigin) {
+      const extra = headersForUrl(
+        url.toString(),
+        this.extraHeaders,
+        this.targetOrigin,
+      )
+      for (const [name, value] of Object.entries(extra)) headers.set(name, value)
+    }
     if (this.cookies.size > 0) {
       headers.set(
         'cookie',
@@ -248,13 +378,7 @@ export class FetchBrowserExecutor implements BrowserExecutor {
 
     let response: Response
     try {
-      response = await fetch(url.toString(), {
-        method,
-        headers,
-        body: body?.toString(),
-        redirect: 'follow',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      })
+      response = await this.send(url, method, headers, body)
     } catch (error) {
       const message =
         error instanceof Error && error.name === 'TimeoutError'

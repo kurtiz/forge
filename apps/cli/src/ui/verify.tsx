@@ -191,6 +191,29 @@ function Result({ report }: { report: RunReport }) {
         </Box>
       )}
 
+      {summary.fix && summary.fix.owner !== 'none' && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold underline>
+            How to fix
+          </Text>
+          <Text>{summary.fix.headline}</Text>
+          {summary.fix.steps.map((step, index) => (
+            <Text key={step} dimColor>
+              {'  '}
+              {index + 1}. {step}
+            </Text>
+          ))}
+          {summary.fix.prompt && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text dimColor>
+                A prompt for your coding agent is on the finding page:
+              </Text>
+              <Text color="cyan">{summary.fix.findingUrl}</Text>
+            </Box>
+          )}
+        </Box>
+      )}
+
       {summary.verdict && (
         <Box marginTop={1}>
           <Text

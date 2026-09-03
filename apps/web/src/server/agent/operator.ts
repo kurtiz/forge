@@ -20,6 +20,7 @@ import type {
   PageObservation,
 } from '@/server/execution/types'
 import type { FailureSignal } from '@/server/domain/analysis'
+import { detectBotChallenge } from '@/server/domain/challenge'
 import type { DiscoveredJourney } from '@/server/contracts'
 import { detectAuthWall, looksLikeLoginPage } from './authenticator'
 import { isAuthJourney } from '@/server/domain/analysis'
@@ -473,6 +474,16 @@ function fingerprint(observation: PageObservation): string {
 }
 
 /**
+ * What a journey reports when the challenge, not the application, answered.
+ *
+ * Its widget lives in a cross-origin frame, so the page model is genuinely
+ * empty - and "no matching control was found" is a true sentence about the
+ * wrong page. This one says which page.
+ */
+const CHALLENGE_STEP_DETAIL =
+  'A bot-protection challenge answered instead of the application, so the page carried no controls to drive.'
+
+/**
  * Executes one journey.
  *
  * A journey is a sequence, not a click. "Add a referral" means open the
@@ -550,6 +561,14 @@ export async function runJourney(
 
     signal.status = result.observation.status || signal.status
     if (result.observation.transportError) signal.transportError = true
+
+    /*
+     * Checked before the login-form rules, and never mistaken for one: a
+     * challenge screen shows no password field, so it would otherwise fall
+     * through every signal here and be reported as a page the journey simply
+     * found nothing on.
+     */
+    if (detectBotChallenge(result.observation)) signal.botChallenge = true
 
     if (authenticated && looksLikeLoginPage(result.observation)) {
       // Signed in, and the application is asking again.
@@ -964,17 +983,20 @@ export async function runJourney(
        */
       if (activated) break
 
+      const challenged = signal.botChallenge === true
       const blocked = signal.authWall === true
       note(
         'Locate control',
         journey.name,
         `A control matching "${journey.name}" is present`,
-        blocked
-          ? 'A sign-in form is in the way: the application requires a login this run does not have.'
-          : 'No matching control was found on the page.',
-        blocked ? 'failed' : 'skipped',
+        challenged
+          ? CHALLENGE_STEP_DETAIL
+          : blocked
+            ? 'A sign-in form is in the way: the application requires a login this run does not have.'
+            : 'No matching control was found on the page.',
+        challenged || blocked ? 'failed' : 'skipped',
       )
-      return done(blocked ? 'failed' : 'skipped')
+      return done(challenged || blocked ? 'failed' : 'skipped')
     }
 
     if (!budget.canSpend('browserActions', 2)) {
@@ -1057,14 +1079,15 @@ export async function runJourney(
   /* --------------------------------------------------------------- verdict */
 
   if (!activated) {
+    const challenged = signal.botChallenge === true
     note(
       'Locate control',
       journey.name,
       `A control matching "${journey.name}" is present`,
-      'No matching control was found on the page.',
-      'skipped',
+      challenged ? CHALLENGE_STEP_DETAIL : 'No matching control was found on the page.',
+      challenged ? 'failed' : 'skipped',
     )
-    return done('skipped')
+    return done(challenged ? 'failed' : 'skipped')
   }
 
   /*

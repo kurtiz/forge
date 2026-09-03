@@ -17,6 +17,7 @@ import type {
   FailureClass,
   Finding,
   ProjectCredential,
+  ProjectHeader,
   ProjectJourney,
   ProjectSampleValue,
   Journey,
@@ -383,6 +384,103 @@ export async function deleteProjectSampleValue(
   await db()
     .delete(tables.projectSampleValues)
     .where(eq(tables.projectSampleValues.id, sampleValueId))
+}
+
+/* --------------------------------------------------------- request headers */
+
+const toProjectHeader = (
+  r: typeof tables.projectHeaders.$inferSelect,
+): ProjectHeader => ({
+  id: r.id,
+  projectId: r.projectId,
+  name: r.name,
+  createdAt: r.createdAt,
+  updatedAt: r.updatedAt,
+})
+
+/**
+ * The headers a project carries, without their values.
+ *
+ * The mapper has no field for the ciphertext, so a header value cannot escape
+ * through an API response the way it could if this returned rows.
+ */
+export async function listProjectHeaders(
+  projectId: string,
+): Promise<ProjectHeader[]> {
+  const rows = await db()
+    .select()
+    .from(tables.projectHeaders)
+    .where(eq(tables.projectHeaders.projectId, projectId))
+    .orderBy(tables.projectHeaders.createdAt)
+
+  return rows.map(toProjectHeader)
+}
+
+/**
+ * Names and ciphertexts, for the engine alone.
+ *
+ * Deliberately not the shape anything above the run engine consumes: this is
+ * the only function that hands out a stored value, and it is called in one
+ * place, inside the run's Durable Object.
+ */
+export async function readProjectHeaders(
+  projectId: string,
+): Promise<Array<{ name: string; valueEncrypted: string }>> {
+  const rows = await db()
+    .select({
+      name: tables.projectHeaders.name,
+      valueEncrypted: tables.projectHeaders.valueEncrypted,
+    })
+    .from(tables.projectHeaders)
+    .where(eq(tables.projectHeaders.projectId, projectId))
+    .orderBy(tables.projectHeaders.createdAt)
+
+  return rows
+}
+
+/**
+ * Adds a header, or replaces the value of one with the same name.
+ *
+ * Replacing rather than rejecting is what makes rotation a one-step operation:
+ * paste the new secret over the old one, and the next run uses it.
+ */
+export async function upsertProjectHeader(input: {
+  projectId: string
+  name: string
+  valueEncrypted: string
+}): Promise<ProjectHeader> {
+  const at = nowIso()
+  const [row] = await db()
+    .insert(tables.projectHeaders)
+    .values({ ...input, id: newId('phd'), createdAt: at, updatedAt: at })
+    .onConflictDoUpdate({
+      target: [tables.projectHeaders.projectId, tables.projectHeaders.name],
+      set: { valueEncrypted: input.valueEncrypted, updatedAt: at },
+    })
+    .returning()
+
+  return toProjectHeader(row)
+}
+
+export async function deleteProjectHeader(headerId: string): Promise<void> {
+  await db()
+    .delete(tables.projectHeaders)
+    .where(eq(tables.projectHeaders.id, headerId))
+}
+
+export async function assertHeaderAccess(
+  headerId: string,
+  userId: string,
+): Promise<{ header: ProjectHeader; project: Project }> {
+  const [row] = await db()
+    .select()
+    .from(tables.projectHeaders)
+    .where(eq(tables.projectHeaders.id, headerId))
+    .limit(1)
+
+  if (!row) throw new NotFoundError('Header')
+  const project = await assertProjectAccess(row.projectId, userId)
+  return { header: toProjectHeader(row), project }
 }
 
 export async function assertSampleValueAccess(

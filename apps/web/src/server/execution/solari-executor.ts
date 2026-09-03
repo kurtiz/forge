@@ -25,7 +25,7 @@ import {
   type PageObservation,
   type Screenshot,
 } from './types'
-import { assertSafeTargetUrl } from '@/server/security'
+import { assertSafeTargetUrl, headersForUrl } from '@/server/security'
 
 /**
  * The create-session response.
@@ -53,6 +53,10 @@ export type SolariConfig = {
   baseUrl?: string
   recording?: boolean
   stealth?: boolean
+  /** The project's verification headers. See `ExecutorOptions`. */
+  headers?: Readonly<Record<string, string>>
+  /** Origin of the project's target. Headers reach this origin and no other. */
+  targetOrigin?: string
 }
 
 const DEFAULT_BASE_URL = 'https://api.getsolari.com'
@@ -207,6 +211,38 @@ export class SolariBrowserExecutor implements BrowserExecutor {
     await cdp.send('Log.enable', {}, sessionId)
 
     /*
+     * Request interception, and only when there is something to inject.
+     *
+     * `Network.setExtraHTTPHeaders` would be one line, and it would attach the
+     * project's secret to every request the page makes - including the fonts,
+     * the analytics beacon, and anything else a third party is serving into it.
+     * Pausing each request and adding the headers by hand is the only way to
+     * decide per URL.
+     *
+     * The pattern is the target's own origin, so nothing else is ever paused:
+     * a project without headers runs with the Fetch domain off entirely, and
+     * one with them pays the interception cost only on its own requests.
+     */
+    if (this.hasHeaders) {
+      try {
+        await cdp.send(
+          'Fetch.enable',
+          { patterns: [{ urlPattern: `${this.config.targetOrigin}/*` }] },
+          sessionId,
+        )
+      } catch {
+        /*
+         * A provider that will not allow interception leaves the run without
+         * its headers, and that is a run that meets whatever the headers were
+         * for - most likely the challenge, reported as a finding. Refusing to
+         * start would report nothing at all.
+         */
+        this.headersUnavailable = true
+        console.debug('[solari] request interception refused; headers not sent')
+      }
+    }
+
+    /*
      * Not fatal if the provider will not take it: a run in the default window
      * is worse than one at desktop size, but far better than no run at all.
      */
@@ -237,8 +273,75 @@ export class SolariBrowserExecutor implements BrowserExecutor {
     this.lastActivityAt = Date.now()
   }
 
+  /** Set when the provider refused interception, so nothing is injected. */
+  private headersUnavailable = false
+
+  get headersAttached(): boolean {
+    return !this.headersUnavailable
+  }
+
+  /** Whether this run carries verification headers worth intercepting for. */
+  private get hasHeaders(): boolean {
+    return Boolean(
+      this.config.targetOrigin &&
+        this.config.headers &&
+        Object.keys(this.config.headers).length > 0,
+    )
+  }
+
+  /**
+   * Lets one paused request go, carrying the project's headers.
+   *
+   * Every paused request must be continued or the page hangs on it, so the
+   * failure path continues it unmodified rather than giving up: a run without
+   * its header is a run that meets the challenge, and a run that never
+   * continues the request is no run at all.
+   *
+   * The origin is checked again here even though the interception pattern
+   * already scopes it. The pattern is a string match performed by the browser;
+   * this is the policy, and the policy is not something to hold in one place.
+   */
+  private releasePausedRequest(params: Record<string, unknown>) {
+    const requestId = params.requestId
+    if (typeof requestId !== 'string') return
+
+    const request = params.request as
+      | { url?: string; headers?: Record<string, string> }
+      | undefined
+
+    const extra = headersForUrl(
+      request?.url ?? '',
+      this.config.headers ?? {},
+      this.config.targetOrigin ?? '',
+    )
+
+    const merged = { ...(request?.headers ?? {}), ...extra }
+    const headers = Object.entries(merged).map(([name, value]) => ({
+      name,
+      value: String(value),
+    }))
+
+    const cdp = this.cdp
+    const sessionId = this.cdpSessionId
+    if (!cdp || !sessionId) return
+
+    void cdp
+      .send('Fetch.continueRequest', { requestId, headers }, sessionId)
+      .catch(() =>
+        cdp
+          .send('Fetch.continueRequest', { requestId }, sessionId)
+          .catch(() => undefined),
+      )
+  }
+
   /** Collects the runtime signals a finding is later judged against. */
   private recordEvent(method: string, params: Record<string, unknown>) {
+    if (method === 'Fetch.requestPaused') {
+      this.releasePausedRequest(params)
+      this.touch()
+      return
+    }
+
     switch (method) {
       case 'Network.requestWillBeSent':
         this.inFlight++

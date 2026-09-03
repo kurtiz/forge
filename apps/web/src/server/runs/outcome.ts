@@ -48,12 +48,22 @@ async function publishCheck(loaded: {
     .replace(/\.git$/, '')
   if (!repoFullName) return
 
-  const [journeys, findings] = await Promise.all([
+  const [journeys, findings, steps, headers] = await Promise.all([
     repo.listJourneys(loaded.run.id),
     repo.listFindings(loaded.run.id),
+    // Carried so the check's fix instructions quote the steps as they ran,
+    // rather than describing a failure in the abstract.
+    repo.listJourneySteps(loaded.run.id),
+    repo.listProjectHeaders(loaded.run.projectId),
   ])
 
-  const report = renderCheckReport({ run: loaded.run, journeys, findings })
+  const report = renderCheckReport({
+    run: loaded.run,
+    journeys,
+    findings,
+    steps,
+    verificationHeaders: headers.map((header) => header.name),
+  })
 
   await concludeCheckRun({
     installationId: githubInstallationId,
