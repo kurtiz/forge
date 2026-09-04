@@ -326,6 +326,12 @@ function Footer() {
       <span className="inline-flex items-center gap-2">
         <ForgeMark size={14}/>
         Forge
+        <Link
+          to="/docs/concepts"
+          className="ml-2 text-kumo-subtle no-underline hover:text-kumo-strong"
+        >
+          Concepts
+        </Link>
       </span>
       <span>
         Solari browsers · Cloudflare Workers, D1, R2, Durable Objects · TanStack

@@ -331,7 +331,7 @@ export function RequestHeadersHelp() {
           <Popover.Close
             nativeButton={false}
             render={
-              <Link to="/docs/request-headers" className="text-sm font-medium">
+              <Link to="/docs/request-headers" className="link text-sm">
                 Learn more
               </Link>
             }

@@ -86,6 +86,34 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * A link that looks like one.
+ *
+ * Kumo's Link component's own treatment - the link blue, underlined at its
+ * weight and offset - lifted into a class so a TanStack `Link`, a plain `<a>`,
+ * and anything else that navigates can wear it without importing a component.
+ * Medium weight, because a link in the middle of a paragraph has nothing else
+ * marking it.
+ *
+ * This is for prose. Chrome that is obviously a control already - the top bar,
+ * a back arrow, a rail of section names, a row that is entirely a target -
+ * stays unstyled, and colour alone would be a weak signal there anyway.
+ *
+ * Hover thickens the underline rather than dimming the colour: the change is
+ * immediate, and a link that fades under the cursor reads as going away.
+ */
+.link {
+  color: var(--text-color-kumo-link);
+  font-weight: 500;
+  text-decoration-line: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 0.0625em;
+}
+
+.link:hover {
+  text-decoration-thickness: 0.125em;
+}
+
 /* Headings set their own line breaks; body copy avoids orphans. */
 h1,
 h2,

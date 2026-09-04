@@ -75,6 +75,12 @@ function Dashboard() {
                   >
                     Use the demo app
                   </Button>
+                  <Link
+                    to="/docs/concepts"
+                    className="basis-full text-center text-xs text-kumo-subtle no-underline hover:text-kumo-strong sm:basis-auto"
+                  >
+                    What Forge does
+                  </Link>
                 </div>
               }
             />
