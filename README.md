@@ -778,5 +778,7 @@ Next, roughly in order:
   points a browser at a stranger's URL actually has
 - [`docs/bot-protection.md`](docs/bot-protection.md) — what happens when the
   target challenges the verifier, and how to let it through per service
+- [`docs/github-app.md`](docs/github-app.md) — every field of the GitHub App
+  form, and which three secrets switch pull request verification on
 - [`docs/releasing.md`](docs/releasing.md) — how a commit message becomes a
   versioned binary on a GitHub release

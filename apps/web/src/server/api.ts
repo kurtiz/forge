@@ -81,6 +81,12 @@ export type SessionPayload = {
    */
   providers: { github: boolean; guest: boolean }
   /**
+   * Whether the GitHub App is configured. Pull request verification is built
+   * on it, so a deployment without it does not offer that feature anywhere in
+   * the console rather than describing something that cannot happen.
+   */
+  githubApp: boolean
+  /**
    * Whether this is a development deployment. Used only to explain a feature
    * that is switched off for want of configuration, which is a thing worth
    * saying to whoever is building the deployment and nobody else.
@@ -96,6 +102,7 @@ export const getSession = createServerFn({ method: 'GET' }).handler(
       github: githubLoginAvailable(),
       guest: guestAccessAvailable(),
     },
+    githubApp: githubConfigured(),
     development: env.FORGE_ENV === 'development',
   }),
 )

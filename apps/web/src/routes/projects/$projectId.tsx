@@ -228,7 +228,12 @@ function ProjectPage() {
           <SchedulePanel projectId={project.id} schedule={schedule} />
         </Section>
 
-        {project.repoUrl ? (
+        {/*
+          Only when both halves exist: a repository to watch, and a GitHub App
+          on this deployment to watch it with. Without the App there is no check
+          to post, so the preview pattern would configure nothing.
+        */}
+        {project.repoUrl && session.githubApp ? (
           <Section title="Pull requests">
             <p className="mt-0 mb-5 max-w-[62ch] text-sm text-kumo-subtle">
               With the GitHub App installed, Forge verifies each pull request's
