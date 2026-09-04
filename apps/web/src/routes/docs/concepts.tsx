@@ -152,7 +152,7 @@ function RunLoop() {
         <li key={stage.phase} className="rail relative pb-6 pl-6 last:pb-0">
           <span
             aria-hidden
-            className="absolute top-[0.3rem] left-0.5 size-2 rounded-full"
+            className="absolute top-[0.3rem] left-[var(--rail-x)] size-2 -translate-x-1/2 rounded-full"
             style={{ background: STAGE_DOT[stage.tone] }}
           />
           <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
