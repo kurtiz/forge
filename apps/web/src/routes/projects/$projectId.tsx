@@ -17,7 +17,10 @@ import { RelativeTime } from '@/components/app/relative-time'
 import { ExecutorNotice } from '@/components/app/executor-notice'
 import { SchedulePanel } from '@/components/app/schedule-panel'
 import { CredentialsPanel } from '@/components/app/credentials-panel'
-import { RequestHeadersPanel } from '@/components/app/request-headers-panel'
+import {
+  RequestHeadersHelp,
+  RequestHeadersPanel,
+} from '@/components/app/request-headers-panel'
 import { JourneyPlanPanel } from '@/components/app/journey-plan-panel'
 import { SampleDataPanel } from '@/components/app/sample-data-panel'
 import {
@@ -215,6 +218,7 @@ function ProjectPage() {
 
         <Section
           title="Request headers"
+          help={<RequestHeadersHelp />}
           meta={headers.length > 0 ? `${headers.length} sent` : undefined}
         >
           <RequestHeadersPanel

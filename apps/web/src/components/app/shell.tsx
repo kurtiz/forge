@@ -159,23 +159,34 @@ export function PageHeader({
   );
 }
 
-/** A labelled section separated by a hairline rather than wrapped in a card. */
+/**
+ * A labelled section separated by a hairline rather than wrapped in a card.
+ *
+ * `help` sits against the title rather than in `meta`, because it explains the
+ * section rather than measuring it, and a reader looking for "what is this"
+ * looks at the heading.
+ */
 export function Section({
                           title,
                           meta,
+                          help,
                           children,
                         }: {
   title: string
   meta?: ReactNode
+  help?: ReactNode
   children: ReactNode
 }) {
   return (
     <section className="mt-10">
       <div
-        className="mb-3 flex items-baseline justify-between gap-3 border-b border-kumo-hairline pb-2">
-        <h2 className="m-0 text-sm font-semibold text-kumo-strong">{title}</h2>
+        className="mb-3 flex items-center justify-between gap-3 border-b border-kumo-hairline pb-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h2 className="m-0 text-sm font-semibold text-kumo-strong">{title}</h2>
+          {help}
+        </div>
         {meta ? (
-          <div className="tabular text-xs text-kumo-subtle">{meta}</div>
+          <div className="tabular shrink-0 text-xs text-kumo-subtle">{meta}</div>
         ) : null}
       </div>
       {children}
