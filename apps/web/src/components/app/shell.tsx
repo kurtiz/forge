@@ -12,12 +12,22 @@ import { ThemeToggle } from "@/components/theme";
 import type { SessionUser } from "@/server/auth";
 import type { ReactNode } from "react";
 
+/**
+ * The mark: an F, and a tick in the accent.
+ *
+ * The view box is not `0 0 24 24`. At 24 the tick's square cap ran a whole
+ * unit past the right edge and the viewport clipped its tip flat, which is
+ * invisible at 18px and unmistakable anywhere the mark is shown large. The box
+ * below is 25 units square, positioned so the artwork - which spans x 2.8 to
+ * 25.0 and y 2.8 to 21.2, caps included - sits centred inside it with nothing
+ * touching an edge. The paths are untouched: the framing was the bug.
+ */
 export function ForgeMark({ size = 18 }: { size?: number }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox="1.4 -0.5 25 25"
       fill="none"
       aria-hidden
       className="shrink-0"
