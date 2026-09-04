@@ -4,6 +4,12 @@
  * Target URL is the only required field. The repository and the workflow
  * description are optional because a URL alone is enough to run, and asking for
  * more up front is the fastest way to lose someone evaluating the product.
+ *
+ * Creating does not start a run. The rest of what steers a run - planned
+ * journeys, sample data, more test accounts, request headers - is set on the
+ * project page, and a form that ran immediately gave people no moment to set
+ * any of it. The project page opens with "Run verification" as its primary
+ * action, so the run is one click away rather than automatic.
  */
 import { useState } from 'react'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
@@ -14,7 +20,7 @@ import { Input } from '@cloudflare/kumo/components/input'
 import { Switch } from '@cloudflare/kumo/components/switch'
 import { Page, PageHeader, TopBar } from '@/components/app/shell'
 import { ExecutorNotice } from '@/components/app/executor-notice'
-import { createProject, startVerification } from '@/server/api'
+import { createProject } from '@/server/api'
 
 export const Route = createFileRoute('/projects/new')({
   validateSearch: z.object({ demo: z.boolean().optional() }),
@@ -64,11 +70,11 @@ function NewProject() {
           authPassword: needsLogin ? authPassword : undefined,
         },
       })
-      // Creating a project and then having to find the run button is a wasted
-      // step; the intent of this form is always "verify this".
-      const run = await startVerification({ data: { projectId: project.id } })
       await router.invalidate()
-      await router.navigate({ to: '/runs/$runId', params: { runId: run.id } })
+      await router.navigate({
+        to: '/projects/$projectId',
+        params: { projectId: project.id },
+      })
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -85,7 +91,7 @@ function NewProject() {
       <Page>
         <PageHeader
           title="New project"
-          description="Forge opens this URL, works out what the application does, and starts verifying it."
+          description="Forge opens this URL and works out what the application does. Once the project exists you can add journeys, sample data, and request headers, then run the first verification."
         />
 
         <ExecutorNotice executor={session.executor} />
@@ -137,7 +143,7 @@ function NewProject() {
                 <p className="m-0 text-sm text-kumo-secondary">
                   Forge signs in once at the start of a run and reuses the
                   session for every journey. Use a{' '}
-                  <strong>dedicated test account</strong> — never production
+                  <strong>dedicated test account</strong>, never production
                   credentials. The password is encrypted before it is stored and
                   is never shown again, never sent to the model, and never
                   written to a log, an artifact, or the run timeline. You can add
@@ -197,7 +203,7 @@ function NewProject() {
               loading={busy}
               icon={<ArrowRightIcon size={16} />}
             >
-              Start verification
+              Create project
             </Button>
             {!demo ? (
               <Button
