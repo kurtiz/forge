@@ -69,16 +69,35 @@ export function TopBar({
           <span className="text-[15px] font-semibold tracking-tight">Forge</span>
         </Link>
 
-        <div className="ml-auto flex items-center gap-2">
-          {right}
+        {/*
+          * Navigation, then actions.
+          *
+          * Docs is unconditional: the concepts page is the answer to "what is
+          * this actually doing", which is a question people have before they
+          * have an account, and it is the only route in the chrome that a
+          * signed-out visitor can follow. It stays visible at every width
+          * because, unlike Settings, there is no account menu behind it to
+          * fall back to - a signed-out visitor has no menu at all.
+          */}
+        <nav className="ml-auto flex items-center gap-4 text-sm">
+          <Link
+            to="/docs/concepts"
+            className="text-kumo-subtle no-underline hover:text-kumo-strong"
+          >
+            Docs
+          </Link>
           {user && !user.isAnonymous ? (
             <Link
               to="/settings"
-              className="hidden text-sm text-kumo-subtle no-underline hover:text-kumo-strong sm:inline"
+              className="hidden text-kumo-subtle no-underline hover:text-kumo-strong sm:inline"
             >
               Settings
             </Link>
           ) : null}
+        </nav>
+
+        <div className="flex items-center gap-2">
+          {right}
           <ThemeToggle/>
           {user ? <AccountChip user={user}/> : null}
         </div>

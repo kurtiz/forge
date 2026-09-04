@@ -773,8 +773,8 @@ Next, roughly in order:
 In the console itself, **/docs/concepts** defines the vocabulary — project, run,
 journey, finding, evidence, classification, reproduction, confidence — with an
 analogy and an example for each, and says in one page what Forge is for. It is
-reachable from the account menu, and open to signed-out visitors. Everything
-below is the version an engineer reads in the repository.
+reachable from **Docs** in the top bar of every page, signed in or not.
+Everything below is the version an engineer reads in the repository.
 
 - [`docs/architecture.md`](docs/architecture.md) — the three layers, and why the
   boundaries fall where they do

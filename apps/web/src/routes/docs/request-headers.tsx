@@ -102,11 +102,11 @@ function RequestHeadersDoc() {
         <PageHeader
           above={
             <Link
-              to="/dashboard"
+              to={session.user ? '/dashboard' : '/'}
               className="inline-flex items-center gap-1.5 text-xs text-kumo-subtle no-underline hover:text-kumo-strong"
             >
               <ArrowLeftIcon size={12} />
-              Verification
+              {session.user ? 'Verification' : 'Forge'}
             </Link>
           }
           title="Request headers"
