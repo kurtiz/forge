@@ -64,7 +64,7 @@ const KNOWN_FLAGS = new Set([
   'version',
 ])
 
-const HELP = `${bold('forge')} — AI writes the code. Forge proves it works.
+const HELP = `${bold('forge')}: AI writes the code. Forge proves it works.
 
 ${bold('Usage')}
   forge verify --url <url> [options]
@@ -360,7 +360,7 @@ async function waitForRun(
         ).length
         line(
           journeys > 0
-            ? `${report.run.status} — ${done}/${journeys} journeys`
+            ? `${report.run.status}, ${done}/${journeys} journeys`
             : report.run.status,
         )
       }

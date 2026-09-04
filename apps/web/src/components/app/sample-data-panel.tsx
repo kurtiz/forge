@@ -94,8 +94,8 @@ export function SampleDataPanel({
     <div className="grid gap-5">
       <p className="m-0 max-w-[62ch] text-sm text-kumo-subtle">
         Forge invents what it types into a form. That works until the
-        application checks the value against itself — a lookup that has to find
-        a real patient, an order number that has to exist. Name the field as the
+        application checks the value against itself: a lookup that has to find a
+        real patient, an order number that has to exist. Name the field as the
         form labels it and give a value that works. Never a password.
       </p>
 

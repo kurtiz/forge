@@ -133,7 +133,7 @@ export function CredentialsPanel({
         For an application behind a login. Runs sign in with the default account
         before exploring, so what Forge can verify is whatever that account can
         reach. Add one per role to cover more of the application. Use dedicated
-        test accounts — never production credentials.
+        test accounts, never production credentials.
       </p>
 
       {credentials.length === 0 && editing !== 'new' ? (

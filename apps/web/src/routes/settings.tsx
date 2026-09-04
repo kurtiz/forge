@@ -304,7 +304,7 @@ function GitHubSection({
         <Empty
           size="sm"
           title="Not available on this deployment"
-          description="Pull request verification needs a GitHub App. Set all three secrets — any one missing turns the integration off — then redeploy."
+          description="Pull request verification needs a GitHub App. Set all three secrets, then redeploy. Any one missing turns the integration off."
           contents={
             <div className="grid gap-3 text-left">
               <div className="rounded-md bg-kumo-base p-3 font-mono text-xs text-kumo-secondary">
