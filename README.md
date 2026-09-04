@@ -418,7 +418,7 @@ wrangler secret put FORGE_CREDENTIAL_KEY  # optional; needed to store app logins
 # Optional; all three together enable pull request verification
 wrangler secret put GITHUB_APP_ID
 wrangler secret put GITHUB_APP_PRIVATE_KEY
-wrangler secret put GITHUB_WEBHOOK_SECRET
+wrangler secret put GITHUB_APP_WEBHOOK_SECRET
 
 # Optional; both together enable "Continue with GitHub" on the sign-in page
 wrangler secret put GITHUB_CLIENT_ID
@@ -447,7 +447,7 @@ without the rest and says so in the run rather than in the documentation.
 | `FORGE_CREDENTIAL_KEY` | Encrypts stored test-account passwords. Needed only to store an application login |
 | `CLOUDFLARE_ACCOUNT_ID` | Names the account for the remote Workers AI binding in development |
 | `AI_GATEWAY_URL` · `AI_GATEWAY_KEY` · `AI_GATEWAY_MODEL` | Point the agents at an OpenAI-compatible endpoint instead of Workers AI |
-| `GITHUB_APP_ID` · `GITHUB_APP_PRIVATE_KEY` · `GITHUB_WEBHOOK_SECRET` · `GITHUB_APP_SLUG` | Pull request verification; needed together |
+| `GITHUB_APP_ID` · `GITHUB_APP_PRIVATE_KEY` · `GITHUB_APP_WEBHOOK_SECRET` · `GITHUB_APP_SLUG` | Pull request verification; needed together |
 | `GITHUB_CLIENT_ID` · `GITHUB_CLIENT_SECRET` | "Continue with GitHub" on the sign-in page |
 | `FORGE_DEMO_FIXED` | Repairs the seeded demo defects, so **Verify fix** has something to pass |
 

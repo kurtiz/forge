@@ -316,7 +316,7 @@ function GitHubSection({
                 <br />
                 wrangler secret put GITHUB_APP_PRIVATE_KEY
                 <br />
-                wrangler secret put GITHUB_WEBHOOK_SECRET
+                wrangler secret put GITHUB_APP_WEBHOOK_SECRET
               </div>
               <p className="m-0 max-w-[52ch] text-xs text-kumo-subtle">
                 The private key must be PKCS#8. GitHub issues PKCS#1, so convert

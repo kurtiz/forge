@@ -29,7 +29,7 @@ const USER_AGENT = 'Forge-Verification'
 
 export function githubConfigured(): boolean {
   return Boolean(
-    env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY && env.GITHUB_WEBHOOK_SECRET,
+    env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY && env.GITHUB_APP_WEBHOOK_SECRET,
   )
 }
 

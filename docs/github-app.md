@@ -97,7 +97,7 @@ rather than being stolen.
 openssl rand -hex 32
 ```
 
-Keep that value. It goes into GitHub's form and into `GITHUB_WEBHOOK_SECRET`,
+Keep that value. It goes into GitHub's form and into `GITHUB_APP_WEBHOOK_SECRET`,
 and it is the entire security boundary on that endpoint: the HMAC is verified
 against the raw body before anything is parsed, and a delivery that fails gets
 a bare 401.
@@ -209,7 +209,7 @@ cd apps/web
 
 wrangler secret put GITHUB_APP_ID           # 123456
 wrangler secret put GITHUB_APP_PRIVATE_KEY  # paste the single-line PKCS#8
-wrangler secret put GITHUB_WEBHOOK_SECRET   # the openssl rand -hex 32 value
+wrangler secret put GITHUB_APP_WEBHOOK_SECRET   # the openssl rand -hex 32 value
 wrangler secret put GITHUB_APP_SLUG         # forge-verification
 
 # Only if this app also handles sign-in
@@ -227,7 +227,7 @@ Secrets take effect on the next request; no redeploy is needed for a value
 change, but do redeploy after `pnpm build` if code changed too.
 
 The three that matter are `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, and
-`GITHUB_WEBHOOK_SECRET`. Any one missing turns the integration off completely —
+`GITHUB_APP_WEBHOOK_SECRET`. Any one missing turns the integration off completely —
 there is no half-configured state. `GITHUB_APP_SLUG` is separate: without it the
 integration still works, but the console has no install link to offer, so the
 section stays hidden for anyone who has not installed the app already.
@@ -239,7 +239,7 @@ Local secrets live in `apps/web/.dev.vars`, which is gitignored:
 ```
 GITHUB_APP_ID="123456"
 GITHUB_APP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
-GITHUB_WEBHOOK_SECRET="the-dev-secret"
+GITHUB_APP_WEBHOOK_SECRET="the-dev-secret"
 GITHUB_APP_SLUG="forge-verification-dev"
 ```
 

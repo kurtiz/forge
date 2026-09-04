@@ -30,7 +30,7 @@ export const Route = createFileRoute('/api/github/webhook')({
         const valid = await verifySignature(
           payload,
           request.headers.get('x-hub-signature-256'),
-          env.GITHUB_WEBHOOK_SECRET ?? '',
+          env.GITHUB_APP_WEBHOOK_SECRET ?? '',
         )
         if (!valid) return new Response('Invalid signature.', { status: 401 })
 

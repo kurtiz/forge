@@ -34,7 +34,7 @@ interface ForgeOptionalEnv {
   GITHUB_APP_ID?: string
   /** PKCS#8 PEM. GitHub issues PKCS#1; `openssl pkcs8 -topk8` converts it. */
   GITHUB_APP_PRIVATE_KEY?: string
-  GITHUB_WEBHOOK_SECRET?: string
+  GITHUB_APP_WEBHOOK_SECRET?: string
   /** The app's URL slug, used to build the install link. */
   GITHUB_APP_SLUG?: string
 
