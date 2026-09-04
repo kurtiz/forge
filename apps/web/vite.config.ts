@@ -31,7 +31,20 @@ function accountIdFromDevVars(): string | undefined {
 process.env.CLOUDFLARE_ACCOUNT_ID ??= accountIdFromDevVars()
 
 export default defineConfig({
-  resolve: { tsconfigPaths: true },
+  /**
+   * One React, everywhere.
+   *
+   * Kumo ships pre-bundled chunks that import `react` and `react-dom` by name.
+   * The ones the app already reaches through an entry get pre-bundled with the
+   * app's copy; a chunk Vite discovers later - the popover was the first, and
+   * it is the only one in the set that pulls `react-dom` - resolves them to the
+   * raw package instead, and the SSR render then has two Reacts in it. What
+   * you see is not an import error but the first hook in the route throwing
+   * "Cannot read properties of null", because the second copy has no
+   * dispatcher, so the page renders as an empty body with the real cause four
+   * frames up. Deduping resolves every request for either package to one file.
+   */
+  resolve: { tsconfigPaths: true, dedupe: ['react', 'react-dom'] },
   plugins: [
     /**
      * Source attribution is off.
