@@ -25,11 +25,20 @@ import { Console, PageHeader } from './shell'
 import { Pill, PhaseRail, SectionHeader, JourneyRow, ConsoleBlock } from '../components/ui'
 import { JOURNEYS, PHASES, RUN_ID, TARGET_URL, PROJECT_NAME } from '../data/demoRun'
 import { ramp, camera, FORGE_EASE, CAMERA_EASE } from '../motion'
+import { beats } from '../motion/grid'
 
-export const EXECUTION_FRAMES = 210
+export const EXECUTION_FRAMES = beats(8)
 
-/** Frame the failing step lands on. Everything in the scene is timed off it. */
-const FAIL_AT = 150
+/**
+ * Frame the failing step lands on. Everything in the scene is timed off it.
+ *
+ * Beat 6 of eight, which puts it on the film's frame 918 - a half-bar, with the
+ * cut to the reproduction two beats later landing squarely on the downbeat that
+ * closes the phrase. The failure and the cut away from it are the two loudest
+ * edits in the piece and they now bracket a musical phrase instead of sitting
+ * across one.
+ */
+const FAIL_AT = beats(6)
 
 /**
  * How far the page scrolls to centre the failing card, in viewport pixels.
@@ -50,7 +59,7 @@ export function Execution() {
    */
   const rows = (i: number) => {
     if (i === 0) return ramp(frame, [12, 58], [0, 4])
-    if (i === 1) return ramp(frame, [64, FAIL_AT + 4], [0, 3])
+    if (i === 1) return ramp(frame, [beats(2) + 10, FAIL_AT + 4], [0, 3])
     if (i === 2) return ramp(frame, [96, 112], [0, 1])
     return ramp(frame, [110, 132], [0, 2])
   }
@@ -62,7 +71,7 @@ export function Execution() {
     return JOURNEYS[i].status
   }
 
-  const isolate = ramp(frame, [FAIL_AT - 40, FAIL_AT + 8], [0, 1], CAMERA_EASE)
+  const isolate = ramp(frame, [FAIL_AT - beats(1.5), FAIL_AT + 8], [0, 1], CAMERA_EASE)
   const emphasis = ramp(frame, [FAIL_AT, FAIL_AT + 10], [0, 1])
 
   /*
@@ -70,8 +79,8 @@ export function Execution() {
    * as the camera settles on the failure.
    */
   const scrollY =
-    ramp(frame, [20, FAIL_AT - 40], [0, 96], FORGE_EASE) +
-    ramp(frame, [FAIL_AT - 40, FAIL_AT + 8], [0, SCROLL - 96], CAMERA_EASE)
+    ramp(frame, [20, FAIL_AT - beats(1.5)], [0, 96], FORGE_EASE) +
+    ramp(frame, [FAIL_AT - beats(1.5), FAIL_AT + 8], [0, SCROLL - 96], CAMERA_EASE)
 
   /* Held inside the safe range so nothing is cut off at the edges. */
   const camScale = ramp(frame, [0, FAIL_AT + 8], [1.0, 1.07], FORGE_EASE)

@@ -14,21 +14,24 @@ import { color } from '../theme'
 import { Stage } from './shell'
 import { Statement, Kicker } from '../components/type'
 import { ramp, springAt } from '../motion'
+import { beats } from '../motion/grid'
 
-export const HOOK_FRAMES = 150
+export const HOOK_FRAMES = beats(6)
 
 export function Hook() {
   const frame = useCurrentFrame()
 
   const gridIn = ramp(frame, [0, 45], [0, 1])
   const line1 = springAt(frame, 8, 'settle')
-  const line2 = springAt(frame, 62, 'arrive')
+  /* The contrast lands on beat 2, which is the first downbeat-adjacent hit the
+     bed gives us; the grid is what makes the pause before it feel deliberate. */
+  const line2 = springAt(frame, beats(2), 'arrive')
 
   /* The first line's retreat, timed to start as the second one begins. */
-  const recede = ramp(frame, [58, 82], [0, 1])
+  const recede = ramp(frame, [beats(2) - 4, beats(2) + 20], [0, 1])
 
-  const kicker = ramp(frame, [110, 130], [0, 1])
-  const out = ramp(frame, [138, 150], [1, 0])
+  const kicker = ramp(frame, [beats(4), beats(4) + 20], [0, 1])
+  const out = ramp(frame, [HOOK_FRAMES - 12, HOOK_FRAMES], [1, 0])
 
   return (
     <Stage grid={gridIn * 0.85} bloom={ramp(frame, [60, 110], [0, 0.5])} style={{ opacity: out }}>

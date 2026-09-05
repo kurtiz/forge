@@ -22,8 +22,9 @@ import { NorthbeamError } from '../components/northbeam'
 import { CodePanel } from '../components/code'
 import { ERROR_TEXT, ERROR_FRAME, FINDING, SOURCE_LINES } from '../data/demoRun'
 import { ramp, springAt, FORGE_EASE, CAMERA_EASE } from '../motion'
+import { beats } from '../motion/grid'
 
-export const INVESTIGATION_FRAMES = 210
+export const INVESTIGATION_FRAMES = beats(8)
 
 const TERMINAL_LINES = [
   { prompt: true, text: 'solari sandbox create --repo northbeam/app' },
@@ -38,18 +39,22 @@ export function Investigation() {
   /* Browser recedes; terminal takes the frame. */
   const handoff = ramp(frame, [0, 34], [0, 1], CAMERA_EASE)
   /* Terminal reveals its lines, then itself gives way to the source. */
-  const termLines = Math.floor(ramp(frame, [26, 76], [0, TERMINAL_LINES.length + 0.5]))
-  const toSource = ramp(frame, [82, 112], [0, 1], CAMERA_EASE)
+  /* Starts as the terminal does, not after it: a window that slides in empty
+     and then fills reads as two events, and the shot only has room for one. */
+  const termLines = Math.floor(ramp(frame, [8, 62], [0, TERMINAL_LINES.length + 0.5]))
+  /* The sandbox gives way to the file on beat 3; the line lights on beat 5 and
+     is fully lit, with its stack frame beneath it, on beat 6. */
+  const toSource = ramp(frame, [beats(3), beats(4)], [0, 1], CAMERA_EASE)
 
-  const reveal = ramp(frame, [92, 128], [0, 1], FORGE_EASE)
-  const focus = ramp(frame, [128, 162], [0, 1], FORGE_EASE)
-  const cause = springAt(frame, 150, 'arrive')
-  const out = ramp(frame, [198, 210], [1, 0])
+  const reveal = ramp(frame, [beats(3) + 11, beats(4) + 19], [0, 1], FORGE_EASE)
+  const focus = ramp(frame, [beats(5), beats(6)], [0, 1], FORGE_EASE)
+  const cause = springAt(frame, beats(6), 'arrive')
+  const out = ramp(frame, [INVESTIGATION_FRAMES - 12, INVESTIGATION_FRAMES], [1, 0])
 
   return (
     <Stage
       grid={0.3}
-      bloom={ramp(frame, [90, 150], [0.2, 0.55])}
+      bloom={ramp(frame, [beats(3), beats(5)], [0.2, 0.55])}
       style={{ opacity: out, alignItems: 'center', padding: '0 110px' }}
     >
       <Kicker

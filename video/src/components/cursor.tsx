@@ -8,7 +8,17 @@
  *
  * Movement is on a cubic path so the pointer arcs rather than sliding along a
  * ruler, and the press is the product's own 0.96 scale.
+ *
+ * Coordinates are the pointer's **tip**, not the top-left of its box. That
+ * distinction is the whole game for a cursor: the tip is what the viewer reads
+ * as "the thing being pointed at", and targeting the box origin puts the click
+ * five pixels down and right of wherever it was supposed to land. Pass the
+ * centre of the control you want pressed.
  */
+
+/** Where the tip sits inside the 26x26 sprite, in sprite pixels. */
+const TIP_X = 5.4
+const TIP_Y = 2.7
 import { color } from '../theme'
 import { ramp, FORGE_EASE } from '../motion'
 
@@ -46,10 +56,10 @@ export function Cursor({
       viewBox="0 0 24 24"
       style={{
         position: 'absolute',
-        left: x,
-        top: y,
+        left: x - TIP_X,
+        top: y - TIP_Y,
         transform: `scale(${pressed})`,
-        transformOrigin: '4px 3px',
+        transformOrigin: `${TIP_X}px ${TIP_Y}px`,
         opacity,
         filter: 'drop-shadow(0 3px 8px rgba(0,0,0,0.7))',
         zIndex: 50,
@@ -66,7 +76,13 @@ export function Cursor({
   )
 }
 
-/** The ring a click leaves behind. Fades in six frames; never lingers. */
+/**
+ * The ring a click leaves behind. Fades in six frames; never lingers.
+ *
+ * `at` is the same tip coordinate the cursor was given, and the ring is centred
+ * on it - a ring centred on the sprite's box instead sits visibly off the
+ * control it is meant to be marking.
+ */
 export function ClickRing({
   at,
   frame,
@@ -82,8 +98,8 @@ export function ClickRing({
     <span
       style={{
         position: 'absolute',
-        left: at[0] - 20 + 4,
-        top: at[1] - 20 + 3,
+        left: at[0] - 20,
+        top: at[1] - 20,
         width: 40,
         height: 40,
         borderRadius: 999,

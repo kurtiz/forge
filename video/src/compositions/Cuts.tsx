@@ -12,6 +12,7 @@
  */
 import { AbsoluteFill, Audio, Sequence, staticFile } from 'remotion'
 import { color } from '../theme'
+import { beats } from '../motion/grid'
 import { Hook } from '../scenes/01-hook'
 import { Discovery } from '../scenes/04-discovery'
 import { Execution } from '../scenes/05-execution'
@@ -21,7 +22,7 @@ import { Evidence } from '../scenes/08-evidence'
 import { FixVerified } from '../scenes/09-fix-verified'
 import { Outro } from '../scenes/10-outro'
 
-export const SOCIAL_30_FRAMES = 900
+export const SOCIAL_30_FRAMES = beats(33)
 
 /**
  * 30 seconds, for a feed.
@@ -38,26 +39,40 @@ export const SOCIAL_30_FRAMES = 900
  * ones a shorter cut is most tempted to rush and least able to afford to: the
  * opening contrast, and 5 / 5.
  *
+ * Every length and every offset is a whole number of beats, so the shorts sit
+ * on the same 27-frame grid as the master and can carry the same bed. An offset
+ * of `beats(3)` enters a scene exactly three beats into its own timeline, which
+ * keeps its internal cues on the grid too.
+ *
  * The lengths below sum to exactly SOCIAL_30_FRAMES. They have to - a cut that
  * overruns its composition loses its last scenes off the end, silently, which
  * is what the first version of this file did to the payoff.
  */
 export function ForgeSocial30() {
   const cut = [
-    { Component: Hook, frames: 132, offset: 0 },
-    { Component: Discovery, frames: 114, offset: 88 },
-    { Component: Execution, frames: 128, offset: 40 },
-    { Component: Reproduction, frames: 124, offset: 0 },
-    { Component: Investigation, frames: 92, offset: 62 },
-    { Component: Evidence, frames: 112, offset: 28 },
-    { Component: FixVerified, frames: 108, offset: 8 },
-    { Component: Outro, frames: 90, offset: 0 },
+    { Component: Hook, frames: beats(3), offset: 0 },
+    { Component: Discovery, frames: beats(5), offset: beats(3) },
+    { Component: Execution, frames: beats(5), offset: beats(3) },
+    { Component: Reproduction, frames: beats(5), offset: 0 },
+    { Component: Investigation, frames: beats(3), offset: beats(3) },
+    { Component: Evidence, frames: beats(4), offset: beats(2) },
+    /*
+     * Entered at 0, not at the press.
+     *
+     * At `beats(1)` this clip opened on the exact frame the button is clicked,
+     * so the pointer appeared from nowhere, already pressed, and faded ten
+     * frames later - a glitch, not a click. The beat comes out of the
+     * investigation, which can spare it: entered at beat 3 it is already
+     * showing source by its first frame.
+     */
+    { Component: FixVerified, frames: beats(5), offset: 0 },
+    { Component: Outro, frames: beats(3), offset: 0 },
   ]
 
   return <Cut clips={cut} audio="forge-social-30.wav" total={SOCIAL_30_FRAMES} />
 }
 
-export const HOOK_15_FRAMES = 450
+export const HOOK_15_FRAMES = beats(16)
 
 /**
  * 15 seconds. The argument with the setup removed: a failure, five failed
@@ -66,11 +81,11 @@ export const HOOK_15_FRAMES = 450
  */
 export function ForgeHook15() {
   const cut = [
-    { Component: Execution, frames: 96, offset: 118 },
-    { Component: Reproduction, frames: 96, offset: 20 },
-    { Component: Investigation, frames: 96, offset: 96 },
-    { Component: FixVerified, frames: 92, offset: 60 },
-    { Component: Outro, frames: 70, offset: 0 },
+    { Component: Execution, frames: beats(4), offset: beats(4) },
+    { Component: Reproduction, frames: beats(4), offset: beats(1) },
+    { Component: Investigation, frames: beats(3), offset: beats(3) },
+    { Component: FixVerified, frames: beats(3), offset: beats(2) },
+    { Component: Outro, frames: beats(2), offset: 0 },
   ]
 
   return <Cut clips={cut} audio="forge-hook-15.wav" total={HOOK_15_FRAMES} />

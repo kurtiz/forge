@@ -17,24 +17,29 @@ import { Statement } from '../components/type'
 import { BrowserWindow } from '../components/chrome'
 import { NorthbeamError } from '../components/northbeam'
 import { ramp, springAt, stagger } from '../motion'
+import { beats } from '../motion/grid'
 
-export const PROBLEM_FRAMES = 180
+export const PROBLEM_FRAMES = beats(6)
 
 const NODES = ['Prompt', 'Code', 'Deploy'] as const
 
 export function Problem() {
   const frame = useCurrentFrame()
 
-  /* The pipeline holds the frame alone for 60 frames, then the 500 takes it. */
-  const breakIn = ramp(frame, [66, 78], [0, 1])
-  const pipelineOut = ramp(frame, [66, 84], [1, 0])
-  const question = springAt(frame, 132, 'arrive')
-  const out = ramp(frame, [168, 180], [1, 0])
+  /*
+   * The pipeline holds the frame alone for two beats, and the 500 cuts in on
+   * the third. The break is the hardest edit in the film and it is the one cue
+   * that would be most obviously wrong a few frames off the beat.
+   */
+  const breakIn = ramp(frame, [beats(2), beats(2) + 12], [0, 1])
+  const pipelineOut = ramp(frame, [beats(2), beats(2) + 18], [1, 0])
+  const question = springAt(frame, beats(4), 'arrive')
+  const out = ramp(frame, [PROBLEM_FRAMES - 12, PROBLEM_FRAMES], [1, 0])
 
   return (
     <Stage
       grid={0.6}
-      bloom={ramp(frame, [70, 100], [0, 0.55])}
+      bloom={ramp(frame, [beats(2) + 4, beats(3)], [0, 0.55])}
       bloomHue={color.fail}
       style={{ opacity: out, alignItems: 'center' }}
     >
@@ -50,8 +55,8 @@ export function Problem() {
         }}
       >
         {NODES.map((node, i) => {
-          const p = stagger(frame, i, { delay: 6, step: 7, preset: 'snap' })
-          const link = ramp(frame, [14 + i * 7, 26 + i * 7], [0, 1])
+          const p = stagger(frame, i, { delay: 2, step: 6, preset: 'snap' })
+          const link = ramp(frame, [8 + i * 6, 18 + i * 6], [0, 1])
           return (
             <div key={node} style={{ display: 'flex', alignItems: 'center' }}>
               {i > 0 ? (
@@ -98,13 +103,16 @@ export function Problem() {
               width: 92,
               height: 1,
               background: color.hairline,
-              transform: `scaleX(${ramp(frame, [35, 47], [0, 1])})`,
+              transform: `scaleX(${ramp(frame, [20, 30], [0, 1])})`,
               transformOrigin: 'left center',
             }}
           />
           <div
             style={{
-              opacity: springAt(frame, 40, 'snap'),
+              /* Early enough to be read: the break takes the frame on beat 2,
+               and an assumption nobody had time to register is not an
+               assumption the next shot can overturn. */
+            opacity: springAt(frame, 26, 'snap'),
               display: 'flex',
               alignItems: 'center',
               gap: 10,

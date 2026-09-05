@@ -67,10 +67,26 @@ of the frame's 1920 pixels, so anything beyond that starts slicing console rows
 off both edges. Console scenes get their movement from scrolling the page and
 from isolating a card, not from magnification.
 
+## Cut to a grid
+
+The film runs on a **27-frame beat** and a **108-frame bar** — the music bed's
+tempo after a 1% time-stretch. Every scene length is a whole number of beats, so
+every cut lands on one, and the moments that carry the film sit on downbeats:
+the reveal (324), the failure (918), 5 / 5 (1080), the fix (1620).
+
+Express timings as `beats(n)` from `src/motion/grid.ts`, not as frame counts. A
+cue written as `96` is a cue that will quietly fall off the grid the next time a
+scene changes length.
+
 ## Sound
 
-`scripts/build-audio.mjs` synthesises all three tracks from oscillators and
-filtered noise — no samples, no library. Cue frames match the edit, so:
+The bed is a licensed-TBC track in `assets/music/` — see the README there, and
+note it is deliberately not committed. Without it the build falls back to the
+synthesised sound design alone and every cut still renders.
+
+`scripts/build-audio.mjs` synthesises everything else from oscillators and
+filtered noise — no samples, no library — and ducks the bed under the impacts.
+Cue frames match the edit, so:
 
 ```
 pnpm --filter @forge/video sfx    # after changing any scene length

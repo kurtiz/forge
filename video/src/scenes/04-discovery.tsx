@@ -25,11 +25,17 @@ import {
   TRACE,
 } from '../data/demoRun'
 import { ramp, springAt, stagger, typed, camera, FORGE_EASE } from '../motion'
+import { beats } from '../motion/grid'
 
-export const DISCOVERY_FRAMES = 240
+export const DISCOVERY_FRAMES = beats(8)
 
-/** The frame the form hands over to the run. */
-const HANDOFF = 54
+/**
+ * The frame the form hands over to the run: beat 2, so the cut from the form to
+ * the running page happens on the bed rather than between two of its beats.
+ * Everything in `RunPage` is timed from here, and since HANDOFF is itself a
+ * whole number of beats, its local grid is the film's grid.
+ */
+const HANDOFF = beats(2)
 
 export function Discovery() {
   const frame = useCurrentFrame()
@@ -46,10 +52,30 @@ function NewRun({ frame }: { frame: number }) {
   const url = typed(TARGET_URL, frame, { delay: 8, cps: 34 })
   const armed = url.done
   const press = 46
-  const target: [number, number] = [318, 372]
+
+  /*
+   * Viewport coordinates of the button's centre, measured off the render.
+   * The form is a 620px column centred in the 1180px page column, so the
+   * button's left edge is at 350 and it is 124 wide.
+   */
+  const target: [number, number] = [414, 358]
 
   return (
-    <Console>
+    <Console
+      overlay={
+        <>
+          <Cursor
+            from={[780, 660]}
+            to={target}
+            frame={frame}
+            start={22}
+            duration={22}
+            press={press}
+          />
+          <ClickRing at={target} frame={frame} press={press} />
+        </>
+      }
+    >
       <div
         style={{
           maxWidth: 620,
@@ -128,15 +154,6 @@ function NewRun({ frame }: { frame: number }) {
         </div>
       </div>
 
-      <Cursor
-        from={[900, 640]}
-        to={target}
-        frame={frame}
-        start={22}
-        duration={22}
-        press={press}
-      />
-      <ClickRing at={target} frame={frame} press={press} />
     </Console>
   )
 }
@@ -151,10 +168,10 @@ function NewRun({ frame }: { frame: number }) {
 function RunPage({ frame }: { frame: number }) {
   const header = springAt(frame, 2, 'arrive')
 
-  const phase = ramp(frame, [4, 126], [0.35, 3], FORGE_EASE)
+  const phase = ramp(frame, [4, beats(4)], [0.35, 3], FORGE_EASE)
   const currentPhase = phase < 1 ? 'Queued' : phase < 2 ? 'Starting' : 'Discovering'
 
-  const sectionIn = ramp(frame, [64, 84], [0, 1])
+  const sectionIn = ramp(frame, [beats(2), beats(2) + 20], [0, 1])
 
   /*
    * Camera and page scroll are separate jobs here.
@@ -169,12 +186,12 @@ function RunPage({ frame }: { frame: number }) {
    * agent trace - which was always below the fold, exactly as in the product -
    * comes up into frame carrying the run's live commentary.
    */
-  const push = ramp(frame, [0, 186], [1, 1.03], FORGE_EASE)
-  const scrollY = ramp(frame, [128, 186], [0, 196], FORGE_EASE)
+  const push = ramp(frame, [0, beats(6)], [1, 1.03], FORGE_EASE)
+  const scrollY = ramp(frame, [beats(4), beats(6)], [0, 196], FORGE_EASE)
 
   const found = Math.min(
     JOURNEYS.length,
-    Math.floor(ramp(frame, [84, 156], [0, JOURNEYS.length + 0.4])),
+    Math.floor(ramp(frame, [beats(3), beats(5)], [0, JOURNEYS.length + 0.4])),
   )
 
   return (
@@ -220,7 +237,8 @@ function RunPage({ frame }: { frame: number }) {
         />
         <div style={{ marginTop: 2 }}>
           {JOURNEYS.map((journey, i) => {
-            const p = stagger(frame, i, { delay: 88, step: 12, preset: 'arrive' })
+            /* One journey per half-beat: the discovery is the bed's own pulse. */
+            const p = stagger(frame, i, { delay: beats(3), step: 12, preset: 'arrive' })
             if (p <= 0) return null
             return (
               <div
@@ -241,7 +259,7 @@ function RunPage({ frame }: { frame: number }) {
       </div>
 
       {/* Below the fold until the page scrolls, as it is in the product. */}
-      <div style={{ marginTop: 22, opacity: ramp(frame, [96, 116], [0, 1]) }}>
+      <div style={{ marginTop: 22, opacity: ramp(frame, [beats(3) + 15, beats(4) + 8], [0, 1]) }}>
         <SectionHeader
           title="Agent trace"
           meta={
@@ -262,7 +280,7 @@ function RunPage({ frame }: { frame: number }) {
         />
         <Trace
           events={TRACE}
-          visible={ramp(frame, [104, 196], [0, 5])}
+          visible={ramp(frame, [beats(4), beats(6)], [0, 5])}
           style={{ marginTop: 8 }}
         />
       </div>

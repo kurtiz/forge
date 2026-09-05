@@ -3,3 +3,6 @@ out/
 
 # Synthesised by `scripts/build-audio.mjs`, deterministically, on every render.
 public/*.wav
+
+# Third-party music masters. See assets/music/README.md.
+assets/music/*.mp3

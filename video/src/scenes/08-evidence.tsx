@@ -16,8 +16,9 @@ import { Console, PageHeader } from './shell'
 import { Pill, SectionHeader, EvidenceRow, Stat } from '../components/ui'
 import { EVIDENCE, FINDING, PROJECT_NAME, RUN_ID } from '../data/demoRun'
 import { ramp, springAt, stagger, camera, FORGE_EASE } from '../motion'
+import { beats } from '../motion/grid'
 
-export const EVIDENCE_FRAMES = 180
+export const EVIDENCE_FRAMES = beats(6)
 
 /** Where each artifact comes from. Six directions, none of them symmetrical. */
 const ORIGIN: Array<[number, number]> = [
@@ -34,14 +35,16 @@ export function Evidence() {
 
   const header = springAt(frame, 0, 'arrive')
   const listIn = ramp(frame, [12, 26], [0, 1])
-  const statsIn = ramp(frame, [92, 104], [0, 1])
-  const verdict = springAt(frame, 116, 'overshoot')
+  const statsIn = ramp(frame, [beats(3), beats(3) + 12], [0, 1])
+  /* "Confirmed bug" and the numbers arrive together, on beat 4. */
+  const verdict = springAt(frame, beats(4), 'overshoot')
 
   /* Pull back slightly as the evidence assembles: the frame gets fuller. */
-  const scale = ramp(frame, [0, 150], [1.14, 1.02], FORGE_EASE)
+  const scale = ramp(frame, [0, EVIDENCE_FRAMES - 12], [1.14, 1.02], FORGE_EASE)
 
-  const confidence = ramp(frame, [104, 132], [0, FINDING.confidence], FORGE_EASE)
-  const rootCause = ramp(frame, [110, 138], [0, FINDING.rootCauseConfidence], FORGE_EASE)
+  /* Both counters settle on beat 5, so the verdict reads as one event. */
+  const confidence = ramp(frame, [beats(3) + 14, beats(5)], [0, FINDING.confidence], FORGE_EASE)
+  const rootCause = ramp(frame, [beats(3) + 20, beats(5)], [0, FINDING.rootCauseConfidence], FORGE_EASE)
 
   return (
     <Console cameraStyle={camera(scale, [0.5, 0.5])}>
@@ -123,7 +126,7 @@ export function Evidence() {
               kind={item.kind}
               label={item.label}
               size={item.size}
-              progress={stagger(frame, i, { delay: 20, step: 9, preset: 'arrive' })}
+              progress={stagger(frame, i, { delay: 20, step: 8, preset: 'arrive' })}
               offset={ORIGIN[i]}
             />
           ))}
@@ -134,7 +137,7 @@ export function Evidence() {
       <div
         style={{
           marginTop: 24,
-          opacity: ramp(frame, [140, 156], [0, 1]),
+          opacity: ramp(frame, [beats(5), beats(5) + 16], [0, 1]),
           fontFamily: font.sans,
           fontSize: 14,
           color: color.subtle,

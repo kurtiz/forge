@@ -1,10 +1,10 @@
 /**
- * Sound design, synthesised.
+ * The film's audio: a music bed, plus a synthesised sound design over it.
  *
- * No stock library, no trailer-hit sample pack. Every sound in the film is
- * generated here from oscillators and filtered noise, which is partly a licence
- * question and mostly a control one: the impacts have to land on named frames,
- * and a purchased hit with 40ms of pre-roll does not.
+ * The sound design is generated here from oscillators and filtered noise - no
+ * stock library, no trailer-hit sample pack. That is partly a licence question
+ * and mostly a control one: the impacts have to land on named frames, and a
+ * purchased hit with 40ms of pre-roll does not.
  *
  * The palette is deliberately narrow, because the film is 60 seconds of
  * technical argument and a score with opinions would be arguing back:
@@ -17,17 +17,74 @@
  *   texture    bit-crushed noise, for the sandbox
  *   resolve    the only consonant chord in the piece, and the last thing heard
  *
- * Cues are written in frames at 30fps, matching `docs/storyboard.md`, so a shot
- * that moves in the edit moves here by the same number.
+ * The bed is `assets/music/titus-arko-66bpm.mp3`, trimmed to its opening build
+ * and time-stretched 0.9% so its beat is exactly 27 frames - see
+ * `src/motion/grid.ts` for why that number runs through everything. It is
+ * ducked under the impacts rather than mixed flat, so a hit reads as a hit and
+ * not as two loud things at once.
+ *
+ * If the music is not present the build says so and falls back to the sound
+ * design alone, with the synthesised bed underneath it. Every cut still renders.
+ *
+ * Cues are written in frames at 30fps and expressed in beats where they sit on
+ * the grid, so a shot that moves in the edit moves here by the same number.
  *
  * Usage: node scripts/build-audio.mjs
  */
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 const SR = 48000
 const FPS = 30
 const f2s = (frame) => Math.round((frame / FPS) * SR)
+
+/** The grid, mirrored from `src/motion/grid.ts`. 27 frames to the beat. */
+const BEAT = 27
+const b = (n) => Math.round(n * BEAT)
+
+const MUSIC = 'assets/music/titus-arko-66bpm.mp3'
+
+/**
+ * Tempo, taken from the file's own ID3 `TBPM` rather than from analysis.
+ *
+ * Autocorrelation on this track only narrows it to a 66.06-66.20 plateau - the
+ * onsets are soft, which is exactly why it works as a bed and exactly why it is
+ * hard to measure. The tag was written by the DAW that made it, so 66.000 is
+ * the composer's number, not an estimate. It matters: at 66.06 the stretched
+ * beat would be 27.027 frames and the film would be nearly two frames out by
+ * the end. At 66.000 it is 27.000, and nothing drifts.
+ */
+const MUSIC_BPM = 66.0
+const TEMPO = (60 / MUSIC_BPM) / 0.9
+
+/**
+ * The point in the track the bed is trimmed from.
+ *
+ * Not a detected downbeat. Onset detection on this track is genuinely
+ * ambiguous - two methods disagreed by 0.6s, and its bass moves in eighths, so
+ * half a dozen offsets score within noise of each other. A track with a
+ * detectable downbeat would not work as a bed, which is the whole reason this
+ * one was chosen.
+ *
+ * So the offset was found by optimising the two things that can be measured
+ * rather than by trusting a phase estimate. Over a full bar of candidates, each
+ * one trimmed, stretched and scored properly:
+ *
+ *   - how strongly the bass onsets coincide with the film's 27-frame grid
+ *   - how well the excerpt's energy arc correlates with the film's shape
+ *
+ *   start   beat-comb   bar-comb   arc
+ *   2.220     0.951       0.890    0.619   <- this one
+ *   2.284     0.948       0.602    0.656
+ *   3.020     0.112       0.089    0.618
+ *   5.920     1.000       1.000    0.512
+ *
+ * 5.920 locks hardest but starts past the track's build, and the film's first
+ * eleven seconds need a bed that is barely there. 2.220 gives up almost nothing
+ * on the beat, keeps the bar, and keeps the arc.
+ */
+const FIRST_DOWNBEAT = 2.22
 
 /* ------------------------------------------------------------------ voices */
 
@@ -236,14 +293,97 @@ function bed({ frames, gain = 0.2, seed = 55 }) {
   return out
 }
 
+/* ------------------------------------------------------------------- music */
+
+/**
+ * Decodes the bed for one cut: trimmed from a downbeat, stretched onto the
+ * grid, faded at both ends, at exactly the cut's length.
+ *
+ * `atrim` is used rather than an input `-ss` because a seek before the input on
+ * a VBR MP3 lands on a frame boundary, not a sample, and a bed that starts four
+ * milliseconds late puts every downbeat in the film four milliseconds late too.
+ */
+function loadMusic({ startSec, frames }) {
+  if (!existsSync(MUSIC)) return null
+
+  const seconds = frames / FPS
+  const sourceSeconds = seconds * TEMPO
+  const filters = [
+    `atrim=start=${startSec.toFixed(4)}:duration=${sourceSeconds.toFixed(4)}`,
+    'asetpts=N/SR/TB',
+    `atempo=${TEMPO.toFixed(6)}`,
+    /* In under a beat, out over three: the bed should be gone before the mark. */
+    'afade=t=in:st=0:d=0.7',
+    `afade=t=out:st=${(seconds - 2.6).toFixed(3)}:d=2.6`,
+  ].join(',')
+
+  const raw = execFileSync(
+    'ffmpeg',
+    ['-v', 'error', '-i', MUSIC, '-af', filters, '-ac', '2', '-ar', String(SR), '-f', 's16le', '-'],
+    { maxBuffer: 1 << 30 },
+  )
+
+  const total = f2s(frames)
+  const left = new Float64Array(total)
+  const right = new Float64Array(total)
+  const have = Math.min(total, Math.floor(raw.length / 4))
+  for (let i = 0; i < have; i++) {
+    left[i] = raw.readInt16LE(i * 4) / 32768
+    right[i] = raw.readInt16LE(i * 4 + 2) / 32768
+  }
+  return { left, right }
+}
+
+/**
+ * Sidechain ducking, by hand.
+ *
+ * Each impact carves a dip in the bed: 40ms down, held for the length of the
+ * hit's front, then eased back over a beat. Without it the failure at frame 918
+ * simply adds to whatever the music is doing and reads as clutter; with it the
+ * bed steps out of the way and the hit is the only thing in the frame, which is
+ * what the picture is doing at that moment too.
+ */
+function duck(music, dips, total) {
+  const gain = new Float64Array(total).fill(1)
+  for (const { frame, depth, hold = 0.12, release = 0.9 } of dips) {
+    const start = f2s(frame)
+    const attack = Math.floor(0.04 * SR)
+    const held = Math.floor(hold * SR)
+    const rel = Math.floor(release * SR)
+    for (let i = 0; i < attack + held + rel; i++) {
+      const j = start + i - attack
+      if (j < 0 || j >= total) continue
+      let g
+      if (i < attack) g = 1 - depth * (i / attack)
+      else if (i < attack + held) g = 1 - depth
+      else {
+        const t = (i - attack - held) / rel
+        g = 1 - depth * (1 - t) * (1 - t)
+      }
+      if (g < gain[j]) gain[j] = g
+    }
+  }
+  for (let i = 0; i < total; i++) {
+    music.left[i] *= gain[i]
+    music.right[i] *= gain[i]
+  }
+}
+
 /* ------------------------------------------------------------------- mixer */
 
 function mix(total) {
   const left = new Float64Array(total)
   const right = new Float64Array(total)
+  /** Impacts register themselves here so the bed can be ducked under them. */
+  const dips = []
   return {
     left,
     right,
+    dips,
+    /** Record a duck without making a sound - used where the picture hits. */
+    dip(frame, depth, opts = {}) {
+      dips.push({ frame, depth, ...opts })
+    },
     /** `pan` runs -1..1; most of the film is centred, ticks spread a little. */
     at(frame, buf, pan = 0) {
       const start = f2s(frame)
@@ -302,156 +442,203 @@ function writeWav(path, left, right) {
 /* -------------------------------------------------------------- cue sheets */
 
 /**
- * One cue sheet per cut. Frame numbers match the edit in `compositions/`, and
- * the 60's numbers match the table in `docs/storyboard.md`.
+ * One cue sheet per cut.
+ *
+ * Frames match the edit, and anything sitting on the musical grid is written as
+ * `b(n)` beats from its scene's start rather than as a raw number - the whole
+ * point of cutting to a grid is lost if the audio is hand-numbered.
+ *
+ * `m.dip()` ducks the bed without making a sound. `m.at()` places one.
  */
+
+/** Scene starts in the 60, from `compositions/Trailer.tsx`. */
+const T = {
+  hook: 0,
+  problem: b(6),
+  reveal: b(12),
+  discovery: b(20),
+  execution: b(28),
+  reproduction: b(36),
+  investigation: b(42),
+  evidence: b(50),
+  fix: b(56),
+  outro: b(62),
+  end: b(66),
+}
+
 const CUES = {
   'forge-trailer': {
-    frames: 1800,
+    frames: T.end,
+    music: { startSec: FIRST_DOWNBEAT },
     build(m) {
-      m.at(0, bed({ frames: 1800, gain: 0.2 }))
+      /* Hook: the sub lands under "Verifying it did not.", on beat 2. */
+      m.at(T.hook + b(2), impact({ gain: 0.5, from: 70, to: 30, decay: 1.2, seed: 11 }))
+      m.dip(T.hook + b(2), 0.35)
 
-      /* Hook: the sub lands under "Verifying it did not." */
-      m.at(62, impact({ gain: 0.55, from: 70, to: 30, decay: 1.2, seed: 11 }))
-
-      /* Problem: three nodes, then the break. */
-      for (const [i, f] of [156, 163, 170].entries()) {
-        m.at(f, tick({ gain: 0.08, bright: 2600, seed: 20 + i }), -0.3 + i * 0.3)
+      /* Problem: three nodes, "Looks good", then the break on the downbeat. */
+      for (const [i, f] of [2, 8, 14].entries()) {
+        m.at(T.problem + f, tick({ gain: 0.07, bright: 2600, seed: 20 + i }), -0.3 + i * 0.3)
       }
-      m.at(190, tick({ gain: 0.1, bright: 4000, seed: 31 }), 0.35)
-      m.at(216, impact({ gain: 0.6, from: 120, to: 34, decay: 0.7, noise: 0.9, seed: 41 }))
+      m.at(T.problem + 26, tick({ gain: 0.09, bright: 4000, seed: 31 }), 0.35)
+      m.at(T.problem + b(2), impact({ gain: 0.6, from: 120, to: 34, decay: 0.7, noise: 0.9, seed: 41 }))
+      m.dip(T.problem + b(2), 0.5, { hold: 0.2 })
 
-      /* Reveal: the mark, then the tick's own transient. */
-      m.at(336, impact({ gain: 0.7, from: 88, to: 33, decay: 1.5, seed: 51 }))
-      m.at(370, tick({ gain: 0.16, bright: 5200, decay: 0.035, seed: 61 }))
+      /* Reveal: the mark on the downbeat, the tick's transient two beats later,
+         the wordmark complete on the next downbeat. */
+      m.at(T.reveal, impact({ gain: 0.66, from: 88, to: 33, decay: 1.5, seed: 51 }))
+      m.dip(T.reveal, 0.45, { hold: 0.25, release: 1.4 })
+      m.at(T.reveal + b(2), tick({ gain: 0.15, bright: 5200, decay: 0.035, seed: 61 }))
+      m.at(T.reveal + b(4), impact({ gain: 0.3, from: 74, to: 40, decay: 0.8, noise: 0.2, seed: 62 }))
+      m.dip(T.reveal + b(4), 0.28)
 
-      /* Discovery: typing, the button, and one tick per journey found. */
-      for (let i = 0; i < 22; i++) {
-        m.at(548 + i * 2, tick({ gain: 0.035, bright: 4200, decay: 0.008, seed: 70 + i }), (i % 3) * 0.2 - 0.2)
+      /* Discovery: the URL types, the button, one tick per journey found. */
+      for (let i = 0; i < 16; i++) {
+        m.at(T.discovery + 8 + i * 2, tick({ gain: 0.03, bright: 4200, decay: 0.008, seed: 70 + i }), (i % 3) * 0.2 - 0.2)
       }
-      m.at(586, tick({ gain: 0.14, bright: 2200, decay: 0.03, seed: 99 }))
-      for (const [i, f] of [628, 640, 652, 664].entries()) {
-        m.at(f, tick({ gain: 0.09, bright: 3000, seed: 110 + i }), -0.25 + i * 0.17)
+      m.at(T.discovery + 46, tick({ gain: 0.13, bright: 2200, decay: 0.03, seed: 99 }))
+      for (let i = 0; i < 4; i++) {
+        m.at(T.discovery + b(5) + i * 12, tick({ gain: 0.085, bright: 3000, seed: 110 + i }), -0.25 + i * 0.17)
       }
 
-      /* Execution: a tick per console row, then the failure. */
+      /* Execution: a tick per console row, then the failure on beat 6. */
       for (let i = 0; i < 9; i++) {
-        m.at(796 + i * 11, tick({ gain: 0.06, bright: 3400, seed: 130 + i }), (i % 2 ? 0.2 : -0.2))
+        m.at(T.execution + 12 + i * 11, tick({ gain: 0.055, bright: 3400, seed: 130 + i }), i % 2 ? 0.2 : -0.2)
       }
-      m.at(930, failHit({ gain: 0.95 }))
+      m.at(T.execution + b(6), failHit({ gain: 0.95 }))
+      /* The deepest duck in the film, and the longest. The bed comes back
+         under the held frame rather than under the hit. */
+      m.dip(T.execution + b(6), 0.78, { hold: 0.35, release: 1.7 })
 
-      /* Reproduction: tension under five accelerating attempts. */
-      m.at(996, tension({ frames: 96, gain: 0.11 }))
-      for (const [i, f] of [1016, 1034, 1049, 1062, 1072].entries()) {
-        m.at(f, impact({ gain: 0.16 + i * 0.045, from: 76, to: 40, decay: 0.3, noise: 0.7, seed: 150 + i }))
+      /* Reproduction: tension under five accelerating attempts, 5 / 5 on the
+         downbeat at beat 40. */
+      m.at(T.reproduction, tension({ frames: b(4), gain: 0.1 }))
+      for (const [i, f] of [26, 44, 59, 72, 82].entries()) {
+        m.at(T.reproduction + f, impact({ gain: 0.15 + i * 0.045, from: 76, to: 40, decay: 0.3, noise: 0.7, seed: 150 + i }))
+        m.dip(T.reproduction + f, 0.18 + i * 0.05, { release: 0.4 })
       }
-      m.at(1086, impact({ gain: 0.5, from: 66, to: 30, decay: 1.4, seed: 161 }))
+      m.at(T.reproduction + b(4), impact({ gain: 0.5, from: 66, to: 30, decay: 1.4, seed: 161 }))
+      m.dip(T.reproduction + b(4), 0.55, { hold: 0.3, release: 1.5 })
 
-      /* Investigation: the sandbox opens, and the line is found. */
-      m.at(1178, texture({ frames: 120, gain: 0.055 }))
-      m.at(1196, tick({ gain: 0.1, bright: 5000, seed: 170 }), -0.3)
-      m.at(1246, tick({ gain: 0.1, bright: 5000, seed: 171 }), 0.3)
-      m.at(1298, impact({ gain: 0.34, from: 74, to: 44, decay: 0.6, noise: 0.3, seed: 172 }))
+      /* Investigation: the sandbox opens, then the line is found on beat 6. */
+      m.at(T.investigation, texture({ frames: b(4), gain: 0.05 }))
+      m.at(T.investigation + b(1) + 9, tick({ gain: 0.09, bright: 5000, seed: 170 }), -0.3)
+      m.at(T.investigation + b(2) + 12, tick({ gain: 0.09, bright: 5000, seed: 171 }), 0.3)
+      m.at(T.investigation + b(6), impact({ gain: 0.34, from: 74, to: 44, decay: 0.6, noise: 0.3, seed: 172 }))
+      m.dip(T.investigation + b(6), 0.32)
 
-      /* Evidence: one tap per artifact, then the verdict. */
+      /* Evidence: one tap per artifact, then the verdict on beat 4. */
       for (let i = 0; i < 6; i++) {
-        m.at(1400 + i * 9, tick({ gain: 0.09, bright: 3600, seed: 180 + i }), i % 2 ? 0.3 : -0.3)
+        m.at(T.evidence + 20 + i * 8, tick({ gain: 0.085, bright: 3600, seed: 180 + i }), i % 2 ? 0.3 : -0.3)
       }
-      m.at(1496, impact({ gain: 0.45, from: 82, to: 34, decay: 1.1, seed: 191 }))
+      m.at(T.evidence + b(4), impact({ gain: 0.45, from: 82, to: 34, decay: 1.1, seed: 191 }))
+      m.dip(T.evidence + b(4), 0.42, { hold: 0.2, release: 1.2 })
 
-      /* Fix: the click, the re-checks, the resolution. */
-      m.at(1586, tick({ gain: 0.16, bright: 2000, decay: 0.026, seed: 200 }))
-      for (const [i, f] of [1606, 1616, 1624, 1631, 1637].entries()) {
-        m.at(f, tick({ gain: 0.07 + i * 0.012, bright: 3800, seed: 210 + i }), -0.3 + i * 0.15)
+      /* Fix: the click on beat 1, the re-checks, the resolution on the
+         downbeat at beat 60 - the one consonant chord in the piece. */
+      m.at(T.fix + b(1), tick({ gain: 0.15, bright: 2000, decay: 0.026, seed: 200 }))
+      for (const [i, f] of [46, 58, 68, 76, 82].entries()) {
+        m.at(T.fix + f, tick({ gain: 0.065 + i * 0.012, bright: 3800, seed: 210 + i }), -0.3 + i * 0.15)
       }
-      m.at(1654, resolve({ gain: 0.4 }))
+      m.at(T.fix + b(4), resolve({ gain: 0.42 }))
+      m.dip(T.fix + b(4), 0.35, { hold: 0.4, release: 2.0 })
 
       /* Outro. */
-      m.at(1712, tick({ gain: 0.12, bright: 5200, decay: 0.04, seed: 230 }))
+      m.at(T.outro + 16, tick({ gain: 0.11, bright: 5200, decay: 0.04, seed: 230 }))
     },
   },
 
   /*
-   * The 30. Scene starts, from `compositions/Cuts.tsx`:
-   *   hook 0 · discovery 132 · execution 246 · reproduction 374
-   *   investigation 498 · evidence 590 · fix 702 · outro 810
-   * A cue for a scene entered at offset O sits at start + (sceneLocal - O).
+   * The 30. Clip starts and offsets from `compositions/Cuts.tsx`; a cue for a
+   * scene entered at offset O sits at clipStart + (sceneLocal - O).
    */
   'forge-social-30': {
-    frames: 900,
+    frames: b(33),
+    music: { startSec: FIRST_DOWNBEAT },
     build(m) {
-      m.at(0, bed({ frames: 900, gain: 0.2 }))
+      const c = { hook: 0, discovery: b(3), execution: b(8), reproduction: b(13),
+                  investigation: b(18), evidence: b(21), fix: b(25), outro: b(30) }
 
-      /* Hook: the sub under "Verifying it did not." */
-      m.at(62, impact({ gain: 0.55, from: 70, to: 30, decay: 1.2, seed: 11 }))
+      m.at(c.hook + b(2), impact({ gain: 0.5, from: 70, to: 30, decay: 1.2, seed: 11 }))
+      m.dip(c.hook + b(2), 0.35)
 
-      /* Discovery: four journeys land at 186, 198, 210, 222. */
-      for (const [i, f] of [186, 198, 210, 222].entries()) {
-        m.at(f, tick({ gain: 0.09, bright: 3000, seed: 110 + i }), -0.25 + i * 0.17)
+      /* Discovery entered at beat 3, so the journeys land from beat 5. */
+      for (let i = 0; i < 4; i++) {
+        m.at(c.discovery + b(2) + i * 12, tick({ gain: 0.085, bright: 3000, seed: 110 + i }), -0.25 + i * 0.17)
       }
 
-      /* Execution: console rows, then the failure at scene-local 150. */
-      for (let i = 0; i < 7; i++) {
-        m.at(252 + i * 10, tick({ gain: 0.06, bright: 3400, seed: 130 + i }), i % 2 ? 0.2 : -0.2)
-      }
-      m.at(356, failHit({ gain: 0.95 }))
-
-      /* Reproduction: entered at 0, so its own frame numbers apply. */
-      m.at(380, tension({ frames: 86, gain: 0.11 }))
-      for (const [i, f] of [400, 418, 433, 446, 456].entries()) {
-        m.at(f, impact({ gain: 0.16 + i * 0.045, from: 76, to: 40, decay: 0.3, noise: 0.7, seed: 150 + i }))
-      }
-      m.at(470, impact({ gain: 0.5, from: 66, to: 30, decay: 1.4, seed: 161 }))
-
-      /* Investigation: entered at 62, mid-handoff; the line lands at 564. */
-      m.at(498, texture({ frames: 80, gain: 0.055 }))
-      m.at(564, impact({ gain: 0.34, from: 74, to: 44, decay: 0.6, noise: 0.3, seed: 172 }))
-
-      /* Evidence: entered at 28, so the artifacts are already arriving. */
+      /* Execution entered at beat 3: its failure is this cut's beat 11. */
       for (let i = 0; i < 5; i++) {
-        m.at(592 + i * 8, tick({ gain: 0.09, bright: 3600, seed: 180 + i }), i % 2 ? 0.3 : -0.3)
+        m.at(c.execution + i * 11, tick({ gain: 0.055, bright: 3400, seed: 130 + i }), i % 2 ? 0.2 : -0.2)
       }
-      m.at(694, impact({ gain: 0.45, from: 82, to: 34, decay: 1.1, seed: 191 }))
+      m.at(c.execution + b(3), failHit({ gain: 0.95 }))
+      m.dip(c.execution + b(3), 0.78, { hold: 0.35, release: 1.7 })
 
-      /* Fix: click at 720, re-checks, resolution on the stamp at 788. */
-      m.at(720, tick({ gain: 0.16, bright: 2000, decay: 0.026, seed: 200 }))
-      for (const [i, f] of [740, 750, 758, 765, 771].entries()) {
-        m.at(f, tick({ gain: 0.07 + i * 0.012, bright: 3800, seed: 210 + i }), -0.3 + i * 0.15)
+      m.at(c.reproduction, tension({ frames: b(4), gain: 0.1 }))
+      for (const [i, f] of [26, 44, 59, 72, 82].entries()) {
+        m.at(c.reproduction + f, impact({ gain: 0.15 + i * 0.045, from: 76, to: 40, decay: 0.3, noise: 0.7, seed: 150 + i }))
+        m.dip(c.reproduction + f, 0.18 + i * 0.05, { release: 0.4 })
       }
-      m.at(788, resolve({ gain: 0.4 }))
-      m.at(818, tick({ gain: 0.1, bright: 5200, decay: 0.04, seed: 230 }))
+      m.at(c.reproduction + b(4), impact({ gain: 0.5, from: 66, to: 30, decay: 1.4, seed: 161 }))
+      m.dip(c.reproduction + b(4), 0.55, { hold: 0.3, release: 1.5 })
+
+      m.at(c.investigation, texture({ frames: b(3), gain: 0.05 }))
+      m.at(c.investigation + b(3), impact({ gain: 0.34, from: 74, to: 44, decay: 0.6, noise: 0.3, seed: 172 }))
+      m.dip(c.investigation + b(3), 0.32)
+
+      for (let i = 0; i < 4; i++) {
+        m.at(c.evidence + i * 8, tick({ gain: 0.085, bright: 3600, seed: 180 + i }), i % 2 ? 0.3 : -0.3)
+      }
+      m.at(c.evidence + b(2), impact({ gain: 0.45, from: 82, to: 34, decay: 1.1, seed: 191 }))
+      m.dip(c.evidence + b(2), 0.42, { hold: 0.2, release: 1.2 })
+
+      /* Fix is entered at 0 here, so its own frame numbers apply. */
+      m.at(c.fix + b(1), tick({ gain: 0.15, bright: 2000, decay: 0.026, seed: 200 }))
+      for (const [i, f] of [46, 58, 68, 76, 82].entries()) {
+        m.at(c.fix + f, tick({ gain: 0.065 + i * 0.012, bright: 3800, seed: 210 + i }), -0.3 + i * 0.15)
+      }
+      m.at(c.fix + b(4), resolve({ gain: 0.42 }))
+      m.dip(c.fix + b(4), 0.35, { hold: 0.4, release: 2.0 })
+
+      m.at(c.outro + 16, tick({ gain: 0.11, bright: 5200, decay: 0.04, seed: 230 }))
     },
   },
 
   /*
-   * The 15. Scene starts: execution 0 · reproduction 96 · investigation 192
-   * · fix 288 · outro 380. Execution is entered at 118, so its failure - scene
-   * -local 150 - is the film's opening beat, 32 frames in.
+   * The 15. Opens on the failure itself, so the bed is taken from a downbeat
+   * further into the track where it already has weight rather than from the
+   * quiet build the other two cuts use.
    */
   'forge-hook-15': {
-    frames: 450,
+    frames: b(16),
+    music: { startSec: FIRST_DOWNBEAT + 3 * (240 / MUSIC_BPM) },
     build(m) {
-      m.at(0, bed({ frames: 450, gain: 0.22 }))
+      const c = { execution: 0, reproduction: b(4), investigation: b(8), fix: b(11), outro: b(14) }
+
       for (let i = 0; i < 4; i++) {
-        m.at(4 + i * 7, tick({ gain: 0.06, bright: 3400, seed: 130 + i }), i % 2 ? 0.2 : -0.2)
+        m.at(c.execution + i * 9, tick({ gain: 0.055, bright: 3400, seed: 130 + i }), i % 2 ? 0.2 : -0.2)
       }
-      m.at(32, failHit({ gain: 0.95 }))
+      m.at(c.execution + b(2), failHit({ gain: 0.95 }))
+      m.dip(c.execution + b(2), 0.78, { hold: 0.35, release: 1.7 })
 
-      m.at(100, tension({ frames: 66, gain: 0.12 }))
-      for (const [i, f] of [102, 120, 135, 148, 158].entries()) {
-        m.at(f, impact({ gain: 0.18 + i * 0.045, from: 76, to: 40, decay: 0.3, noise: 0.7, seed: 150 + i }))
+      m.at(c.reproduction, tension({ frames: b(3), gain: 0.11 }))
+      for (const [i, f] of [-1, 17, 32, 45, 55].entries()) {
+        m.at(c.reproduction + f, impact({ gain: 0.16 + i * 0.045, from: 76, to: 40, decay: 0.3, noise: 0.7, seed: 150 + i }))
+        m.dip(c.reproduction + f, 0.18 + i * 0.05, { release: 0.4 })
       }
-      m.at(172, impact({ gain: 0.5, from: 66, to: 30, decay: 1.4, seed: 161 }))
+      m.at(c.reproduction + b(3), impact({ gain: 0.5, from: 66, to: 30, decay: 1.4, seed: 161 }))
+      m.dip(c.reproduction + b(3), 0.55, { hold: 0.3, release: 1.5 })
 
-      m.at(192, texture({ frames: 78, gain: 0.06 }))
-      m.at(224, impact({ gain: 0.36, from: 74, to: 44, decay: 0.6, noise: 0.3, seed: 172 }))
+      m.at(c.investigation, texture({ frames: b(3), gain: 0.055 }))
+      m.at(c.investigation + b(3), impact({ gain: 0.36, from: 74, to: 44, decay: 0.6, noise: 0.3, seed: 172 }))
+      m.dip(c.investigation + b(3), 0.32)
 
-      /* Entered past the button press, so the re-checks carry the section. */
-      for (const [i, f] of [292, 300, 306, 311, 316].entries()) {
-        m.at(f, tick({ gain: 0.08 + i * 0.012, bright: 3800, seed: 210 + i }), -0.3 + i * 0.15)
+      for (const [i, f] of [0, 12, 22, 30, 36].entries()) {
+        m.at(c.fix + f, tick({ gain: 0.07 + i * 0.012, bright: 3800, seed: 210 + i }), -0.3 + i * 0.15)
       }
-      m.at(322, resolve({ gain: 0.42 }))
-      m.at(388, tick({ gain: 0.12, bright: 5200, decay: 0.04, seed: 230 }))
+      m.at(c.fix + b(2), resolve({ gain: 0.44 }))
+      m.dip(c.fix + b(2), 0.35, { hold: 0.4, release: 2.0 })
+
+      m.at(c.outro + 16, tick({ gain: 0.11, bright: 5200, decay: 0.04, seed: 230 }))
     },
   },
 }
@@ -460,12 +647,44 @@ const CUES = {
 
 mkdirSync('public', { recursive: true })
 
+const haveMusic = existsSync(MUSIC)
+if (!haveMusic) {
+  console.warn(
+    `\n  ! ${MUSIC} not found - building the sound design alone.\n` +
+      `    See assets/music/README.md.\n`,
+  )
+}
+
 for (const [name, cue] of Object.entries(CUES)) {
   const total = f2s(cue.frames)
   const m = mix(total)
   cue.build(m)
+
+  const music = haveMusic ? loadMusic({ ...cue.music, frames: cue.frames }) : null
+
+  if (music) {
+    duck(music, m.dips, total)
+    /*
+     * The bed sits well under the sound design. It is carrying tempo and
+     * weight, not melody - if it is loud enough to follow as music it is loud
+     * enough to compete with the type.
+     */
+    const level = 0.62
+    for (let i = 0; i < total; i++) {
+      m.left[i] += music.left[i] * level
+      m.right[i] += music.right[i] * level
+    }
+  } else {
+    /* Fallback: the synthesised bed, as before the music existed. */
+    const synth = bed({ frames: cue.frames, gain: 0.2 })
+    m.at(0, synth)
+  }
+
   master(m.left, m.right)
   const out = join('public', `${name}.wav`)
   writeWav(out, m.left, m.right)
-  console.log(`${out}  ${(cue.frames / FPS).toFixed(1)}s  ${(total * 4 / 1e6).toFixed(1)} MB`)
+  console.log(
+    `${out}  ${(cue.frames / FPS).toFixed(1)}s  ${cue.frames} frames  ` +
+      `${music ? 'music + sfx' : 'sfx only'}  ${m.dips.length} ducks`,
+  )
 }

@@ -17,8 +17,9 @@ import { Stage } from './shell'
 import { Kicker } from '../components/type'
 import { FINDING, HERO_JOURNEY } from '../data/demoRun'
 import { ramp, springAt, FORGE_EASE } from '../motion'
+import { beats } from '../motion/grid'
 
-export const REPRODUCTION_FRAMES = 180
+export const REPRODUCTION_FRAMES = beats(6)
 
 /** Frame each attempt resolves on. Gaps shorten: 18, 15, 13, 10, 8. */
 const ATTEMPT_AT = [26, 44, 59, 72, 82]
@@ -28,13 +29,15 @@ export function Reproduction() {
 
   const panel = springAt(frame, 0, 'arrive')
   const resolved = ATTEMPT_AT.filter((f) => frame >= f).length
-  const verdict = springAt(frame, 96, 'arrive')
-  const out = ramp(frame, [168, 180], [1, 0])
+  /* 5 / 5 lands on beat 4, and holds for two - the longest still moment in the
+     film after the failure itself. */
+  const verdict = springAt(frame, beats(4), 'arrive')
+  const out = ramp(frame, [REPRODUCTION_FRAMES - 12, REPRODUCTION_FRAMES], [1, 0])
 
   return (
     <Stage
       grid={0.35}
-      bloom={ramp(frame, [0, 80], [0.2, 0.6])}
+      bloom={ramp(frame, [0, beats(3)], [0.2, 0.6])}
       bloomHue={color.fail}
       style={{ opacity: out, alignItems: 'center' }}
     >

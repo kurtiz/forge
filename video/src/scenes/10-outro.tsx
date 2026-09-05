@@ -10,8 +10,9 @@ import { color, font } from '../theme'
 import { Stage } from './shell'
 import { ForgeMark } from '../components/chrome'
 import { ramp, springAt, FORGE_EASE } from '../motion'
+import { beats } from '../motion/grid'
 
-export const OUTRO_FRAMES = 90
+export const OUTRO_FRAMES = beats(4)
 
 export function Outro() {
   const frame = useCurrentFrame()
@@ -19,9 +20,9 @@ export function Outro() {
   const mark = springAt(frame, 2, 'arrive')
   const draw = ramp(frame, [4, 40], [0, 1], FORGE_EASE)
   const word = springAt(frame, 16, 'arrive')
-  const line = ramp(frame, [30, 50], [0, 1])
-  const credit = ramp(frame, [50, 68], [0, 1])
-  const out = ramp(frame, [80, 90], [1, 0])
+  const line = ramp(frame, [beats(1), beats(2)], [0, 1])
+  const credit = ramp(frame, [beats(2), beats(2) + 18], [0, 1])
+  const out = ramp(frame, [OUTRO_FRAMES - 14, OUTRO_FRAMES], [1, 0])
 
   return (
     <Stage grid={0.4} bloom={0.5} style={{ alignItems: 'center', opacity: out }}>

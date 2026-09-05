@@ -69,10 +69,27 @@ export function Console({
   /** Camera transform, applied outside the viewport scale so the two compose. */
   cameraStyle,
   style,
+  overlay,
 }: {
   children: ReactNode
   cameraStyle?: CSSProperties
   style?: CSSProperties
+  /**
+   * Things that sit *over* the page rather than in it - the pointer, and the
+   * ring a click leaves.
+   *
+   * They need their own layer for two reasons, both learned the hard way. The
+   * scroll clip below is `position: relative`, so anything absolutely
+   * positioned inside it measures from beneath the top bar rather than from the
+   * viewport origin - which put every cursor in this film 56px low. And a
+   * pointer nested in the page would be clipped by that same clip and dragged
+   * around by the page's scroll, neither of which a pointer does.
+   *
+   * Coordinates passed here are plain viewport coordinates: 0,0 is the top left
+   * of the 1320x742.5 page, top bar included. The camera is applied outside
+   * this layer, so a cursor and the button it presses move together.
+   */
+  overlay?: ReactNode
 }) {
   return (
     <AbsoluteFill
@@ -122,6 +139,19 @@ export function Console({
               {children}
             </div>
           </div>
+
+          {overlay ? (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                pointerEvents: 'none',
+                zIndex: 60,
+              }}
+            >
+              {overlay}
+            </div>
+          ) : null}
         </div>
       </AbsoluteFill>
     </AbsoluteFill>

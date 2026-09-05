@@ -19,38 +19,44 @@ const composition = process.argv[2] ?? 'ForgeTrailer'
 const label = process.argv[3] ?? 'qa'
 const dir = join('out', `frames-${label}`)
 
-/** [frame, what the frame is supposed to show] */
+/**
+ * [frame, what the frame is supposed to show]
+ *
+ * Frames sit a little after the cue they check, so a spring has settled by the
+ * time it is photographed. Scene starts on the 27-frame grid are 0, 162, 324,
+ * 540, 756, 972, 1134, 1350, 1512, 1674.
+ */
 const FRAMES = [
   [40, 'hook line 1'],
-  [96, 'hook contrast'],
+  [70, 'hook contrast'],
   [130, 'hook kicker'],
   [200, 'pipeline assembled'],
   [240, 'the 500'],
-  [300, 'who checks'],
-  [370, 'mark drawing'],
-  [440, 'wordmark tracking'],
-  [500, 'the line'],
-  [560, 'url typed'],
-  [600, 'run page opens'],
-  [680, 'rail discovering'],
-  [740, 'journeys landed'],
-  [830, 'operator running'],
-  [900, 'hero console'],
-  [930, 'FAIL beat'],
-  [960, 'isolation held'],
+  [290, 'who checks'],
+  [350, 'mark drawing'],
+  [400, 'wordmark tracking'],
+  [450, 'the line'],
+  [570, 'url typed'],
+  [610, 'run page opens'],
+  [660, 'rail discovering'],
+  [730, 'journeys landed'],
+  [800, 'operator running'],
+  [880, 'hero console'],
+  [925, 'FAIL beat'],
+  [950, 'isolation held'],
   [1030, 'reproducing'],
-  [1080, '5 of 5'],
-  [1140, 'reproduction held'],
-  [1210, 'sandbox terminal'],
-  [1290, 'source revealed'],
-  [1330, 'line 22 focus'],
-  [1400, 'evidence assembling'],
-  [1480, 'stats band'],
-  [1540, 'the rule'],
-  [1600, 'verify fix press'],
-  [1660, 'rerun passing'],
-  [1700, 'fix verified'],
-  [1760, 'outro mark'],
+  [1085, '5 of 5'],
+  [1120, 'reproduction held'],
+  [1160, 'sandbox terminal'],
+  [1240, 'source revealed'],
+  [1300, 'line 22 focus'],
+  [1380, 'evidence assembling'],
+  [1440, 'stats band'],
+  [1490, 'the rule'],
+  [1545, 'verify fix press'],
+  [1600, 'rerun passing'],
+  [1625, 'fix verified'],
+  [1720, 'outro mark'],
 ]
 
 if (existsSync(dir)) rmSync(dir, { recursive: true })

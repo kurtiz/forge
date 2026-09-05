@@ -17,14 +17,15 @@ import { Pill, PhaseRail, JourneyRow, ConsoleBlock } from '../components/ui'
 import { Cursor, ClickRing } from '../components/cursor'
 import { FINDING, HERO_JOURNEY, PHASES, PROJECT_NAME, RUN_ID } from '../data/demoRun'
 import { ramp, springAt, camera, FORGE_EASE } from '../motion'
+import { beats } from '../motion/grid'
 
-export const FIX_FRAMES = 150
+export const FIX_FRAMES = beats(6)
 
-/** The click. Everything after it is a consequence of it. */
-const PRESS = 26
+/** The click, on beat 1. Everything after it is a consequence of it. */
+const PRESS = beats(1)
 
 /** When each re-run resolves. Same five attempts as scene 6, counted back. */
-const RECHECK_AT = [46, 56, 64, 71, 77]
+const RECHECK_AT = [46, 58, 68, 76, 82]
 
 /** The same three steps, with the submit succeeding. */
 const FIXED_STEPS = [
@@ -41,23 +42,45 @@ const FIXED_STEPS = [
 export function FixVerified() {
   const frame = useCurrentFrame()
 
-  const rerun = ramp(frame, [PRESS + 6, 92], [0, 6], FORGE_EASE)
-  const rows = ramp(frame, [PRESS + 14, 82], [0, 3])
-  const passed = frame >= 82
-
-  const stamp = springAt(frame, 94, 'overshoot')
-  const glow = ramp(frame, [92, 114], [0, 1])
-  const scale = ramp(frame, [0, 140], [1.02, 1.09], FORGE_EASE)
-  const out = ramp(frame, [140, 150], [1, 0])
+  const rerun = ramp(frame, [PRESS + 6, beats(4)], [0, 6], FORGE_EASE)
+  const rows = ramp(frame, [PRESS + 14, 100], [0, 3])
+  const passed = frame >= 100
 
   /*
-   * Viewport coordinates, measured off the rendered layout: the button sits at
-   * the right edge of the 1180px column, a little under the breadcrumb.
+   * The payoff sits on beat 4 - the film's frame 1620, a downbeat, and the only
+   * place the bed and the sound design's one consonant chord arrive together.
    */
-  const target: [number, number] = [1208, 130]
+  const stamp = springAt(frame, beats(4), 'overshoot')
+  const glow = ramp(frame, [beats(4), beats(4) + 22], [0, 1])
+  const scale = ramp(frame, [0, FIX_FRAMES - 12], [1.02, 1.09], FORGE_EASE)
+  const out = ramp(frame, [FIX_FRAMES - 12, FIX_FRAMES], [1, 0])
+
+  /*
+   * Viewport coordinates of the button's centre, measured off the render: the
+   * actions sit against the right edge of the 1180px column, level with the
+   * title. The camera is applied outside the overlay, so the pointer and the
+   * button it presses move together and this stays a fixed point.
+   */
+  const target: [number, number] = [1187, 124]
 
   return (
-    <Console cameraStyle={{ ...camera(scale, [0.5, 0.46]), opacity: out }}>
+    <Console
+      cameraStyle={{ ...camera(scale, [0.5, 0.46]), opacity: out }}
+      overlay={
+        <>
+          <Cursor
+            from={[940, 470]}
+            to={target}
+            frame={frame}
+            start={4}
+            duration={20}
+            press={PRESS}
+            opacity={ramp(frame, [PRESS + 10, PRESS + 22], [1, 0])}
+          />
+          <ClickRing at={target} frame={frame} press={PRESS} />
+        </>
+      }
+    >
       <PageHeader
         above={`${PROJECT_NAME} / ${RUN_ID}`}
         title={
@@ -201,23 +224,13 @@ export function FixVerified() {
             fontFamily: font.sans,
             fontSize: 14,
             color: color.subtle,
-            opacity: ramp(frame, [106, 122], [0, 1]),
+            opacity: ramp(frame, [beats(4) + 14, beats(5)], [0, 1]),
           }}
         >
           The original failure no longer reproduces. Regression check kept.
         </div>
       </div>
 
-      <Cursor
-        from={[820, 470]}
-        to={target}
-        frame={frame}
-        start={4}
-        duration={20}
-        press={PRESS}
-        opacity={ramp(frame, [PRESS + 10, PRESS + 22], [1, 0])}
-      />
-      <ClickRing at={target} frame={frame} press={PRESS} />
     </Console>
   )
 }
