@@ -162,6 +162,30 @@ p {
   outline-offset: -1px;
 }
 
+/*
+ * Themed screenshot pairs.
+ *
+ * A capture of a themed interface only belongs to the theme it was taken in: a
+ * light screenshot on a dark page reads as a hole punched in it. So the landing
+ * page ships both and shows whichever matches, keyed off the same `data-mode`
+ * attribute the rest of the product reads, which means the theme toggle moves
+ * the screenshots too rather than leaving them behind.
+ *
+ * The hidden one carries `loading="lazy"`, and a lazy image with no box is not
+ * fetched, so carrying two files costs about what carrying one costs.
+ */
+.shot-dark {
+  display: none;
+}
+
+:root[data-mode="dark"] .shot-light {
+  display: none;
+}
+
+:root[data-mode="dark"] .shot-dark {
+  display: block;
+}
+
 :root[data-mode="dark"] .image-frame {
   outline-color: oklch(1 0 0 / 0.1);
 }
