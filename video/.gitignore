@@ -1,0 +1,5 @@
+# Rendered masters and QA frames. Reproducible from source: `pnpm render:all`.
+out/
+
+# Synthesised by `scripts/build-audio.mjs`, deterministically, on every render.
+public/*.wav

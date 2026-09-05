@@ -7,6 +7,8 @@
     "build": "pnpm --filter @forge/web build",
     "preview": "pnpm --filter @forge/web preview",
     "deploy": "pnpm --filter @forge/web deploy",
+    "video": "pnpm --filter @forge/video studio",
+    "video:render": "pnpm --filter @forge/video render:all",
     "push:secrets": "pnpm --filter @forge/web push:secrets",
     "test": "pnpm --filter @forge/web test",
     "test:watch": "pnpm --filter @forge/web test:watch",
