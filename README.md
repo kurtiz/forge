@@ -80,6 +80,12 @@ bundles a Playwright fork that needs Node and raw sockets, so it cannot run on W
 CDP endpoint and Workers can hold an outbound WebSocket, so `apps/web/src/server/execution/` speaks CDP directly. The
 whole control plane stays on Workers with no extra hop.
 
+The technique is not specific to Forge, and it is not in Solari's documentation, so it is contributed back as a
+runnable example:
+[**browser-workers-cdp-ts**](https://github.com/kurtiz/solari-cookbook/tree/main/examples/browser-workers-cdp-ts) in
+the Solari cookbook — a Worker that launches a browser, opens a page and reads it in about sixty lines of protocol,
+with no SDK and no runtime dependencies. `apps/web/src/server/execution/` is that file grown up.
+
 **There is a working fallback.** Without a `SOLARI_API_KEY`, runs use an HTTP executor built on `HTMLRewriter`: real
 requests, real status codes, real form submissions, real cookies. It cannot run JavaScript, so it will miss
 client-rendered failures. Which executor produced a finding is recorded on the run and shown in the UI, because a
@@ -714,3 +720,9 @@ engineer reads in the repository.
 - [`docs/github-app.md`](docs/github-app.md) — every field of the GitHub App form, and which three secrets switch pull
   request verification on
 - [`docs/releasing.md`](docs/releasing.md) — how a commit message becomes a versioned binary on a GitHub release
+
+And outside this repository:
+
+- [**solari-cookbook / browser-workers-cdp-ts**](https://github.com/kurtiz/solari-cookbook/tree/main/examples/browser-workers-cdp-ts)
+  — the raw-CDP-on-Workers technique Forge is built on, extracted into a standalone runnable example and contributed
+  back to Solari's cookbook
