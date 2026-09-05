@@ -1,0 +1,31 @@
+{
+  "name": "@forge/video",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Forge product trailer. The UI is code, not a screen recording.",
+  "scripts": {
+    "studio": "remotion studio",
+    "sfx": "node scripts/build-audio.mjs",
+    "render": "node scripts/build-audio.mjs && remotion render ForgeTrailer out/forge-trailer-60.mp4 --concurrency=4",
+    "render:30": "node scripts/build-audio.mjs && remotion render ForgeSocial30 out/forge-social-30.mp4 --concurrency=4",
+    "render:15": "node scripts/build-audio.mjs && remotion render ForgeHook15 out/forge-hook-15.mp4 --concurrency=4",
+    "render:all": "pnpm render && pnpm render:30 && pnpm render:15",
+    "still": "remotion still ForgeTrailer",
+    "contact-sheet": "node scripts/contact-sheet.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@remotion/cli": "^4.0.400",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "remotion": "^4.0.400"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "typescript": "^6.0.2"
+  }
+}
