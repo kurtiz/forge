@@ -125,6 +125,43 @@
       }
     ]
   },
+  /**
+   * Rate limiting.
+   *
+   * Three separate namespaces because they protect three different things at
+   * three different rates: guessing a password, flooding the API, and spending
+   * money on runs. `namespace_id` is a number local to this Worker, not an
+   * account resource, so nothing has to be created before the first deploy.
+   *
+   * The period may only be 10 or 60 seconds; 60 is the useful one here, since
+   * all three limits are about what a caller may do in a minute. Counting is
+   * per colo rather than global, so treat these as ceilings on abuse rather
+   * than as exact quotas. See src/server/security/rate-limit.ts.
+   */
+  "ratelimits": [
+    /* Sign-in and sign-up, per address. Generous for a person who mistypes a
+       password, useless for guessing one. */
+    {
+      "name": "AUTH_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 20, "period": 60 }
+    },
+    /* The REST API, per address, counted before the token is looked up. Five a
+       second: far above the CLI, which polls a run every three seconds, and far
+       below a flood. */
+    {
+      "name": "API_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 300, "period": 60 }
+    },
+    /* Starting a run, per account. A run costs a browser session and model
+       calls, and no person presses Verify ten times in a minute. */
+    {
+      "name": "RUN_LIMITER",
+      "namespace_id": "1003",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
   "analytics_engine_datasets": [
     {
       "binding": "ANALYTICS",

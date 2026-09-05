@@ -28,7 +28,9 @@ import { apiRunTrigger, usedApiToken } from '@/server/domain/provenance'
 import { env } from 'cloudflare:workers'
 import {
   assertSafeTargetUrl,
+  limitApiRequest,
   normaliseRepoUrl,
+  RateLimitError,
   UnsafeTargetError,
 } from '@/server/security'
 import { remediationFor } from '@/server/domain/remediation'
@@ -49,6 +51,34 @@ export function apiError(message: string, status: number): Response {
 }
 
 /**
+ * 429, with the header a well-behaved client already knows how to obey.
+ *
+ * `Retry-After` is worth more than the message here: it is what turns a retry
+ * loop in someone's CI script into a wait rather than into more of the traffic
+ * that caused the limit.
+ */
+function tooManyRequests(error: RateLimitError): Response {
+  const response = apiError(error.message, 429)
+  response.headers.set('retry-after', String(error.retryAfterSeconds))
+  return response
+}
+
+/**
+ * The limit every request to this API passes through, counted before the token
+ * is resolved so an unauthenticated flood cannot make the database work.
+ * Returns the response to send, or null to carry on.
+ */
+async function withinApiLimit(request: Request): Promise<Response | null> {
+  try {
+    await limitApiRequest(request)
+    return null
+  } catch (error) {
+    if (error instanceof RateLimitError) return tooManyRequests(error)
+    throw error
+  }
+}
+
+/**
  * Maps a thrown error onto a status.
  *
  * `NotFound` and `Forbidden` both become 404, the same way the evidence route
@@ -56,6 +86,7 @@ export function apiError(message: string, status: number): Response {
  * difference between "not yours" and "does not exist".
  */
 export function errorResponse(error: unknown): Response {
+  if (error instanceof RateLimitError) return tooManyRequests(error)
   if (error instanceof UnsafeTargetError) return apiError(error.message, 400)
   if (error instanceof repo.NotFoundError) return apiError('Not found.', 404)
   if (error instanceof repo.ForbiddenError) return apiError('Not found.', 404)
@@ -79,6 +110,9 @@ export type ApiUser = {
 export async function authenticate(
   request: Request,
 ): Promise<ApiUser | Response> {
+  const limited = await withinApiLimit(request)
+  if (limited) return limited
+
   const user = await currentUser(request)
   if (!user) {
     return apiError(
@@ -297,6 +331,9 @@ export async function deleteProjectHandler(
 
 /** `GET /api/v1/whoami` - what `forge login` calls to confirm a token works. */
 export async function whoamiHandler(request: Request): Promise<Response> {
+  const limited = await withinApiLimit(request)
+  if (limited) return limited
+
   const user = await currentUser(request)
   if (!user) return apiError('That token is not valid.', 401)
 

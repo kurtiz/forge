@@ -37,7 +37,7 @@ apart the day one of those reasons shows up:
 | `server/contracts` | Shared schemas and types | nothing |
 | `server/db` | Drizzle schema and client | contracts |
 | `server/domain` | State machine, classification, scoring, budgets | contracts |
-| `server/security` | Target-URL and repository-URL policy | nothing runtime-bound |
+| `server/security` | Target-URL and repository-URL policy, stored credentials, request headers, redaction, rate limits | nothing runtime-bound |
 | `server/execution` | `BrowserExecutor` and its providers | security |
 | `server/agent` | Explorer, Operator, Judge, model router | contracts, domain, execution |
 | `server/evidence` | R2 artifacts and their metadata | contracts |
