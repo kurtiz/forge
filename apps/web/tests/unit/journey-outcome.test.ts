@@ -31,6 +31,7 @@ const element = (patch: Partial<PageElement> & { ref: string }): PageElement => 
 /** Answers every action with the same page, which is what an empty site does. */
 class StubExecutor implements BrowserExecutor {
   readonly kind = 'fetch' as const
+  readonly headersAttached = true
   readonly sessionId = null
   /** Values typed into the page, so a test can assert nothing was typed. */
   readonly filled: Array<{ ref: string; value: string }> = []

@@ -92,6 +92,22 @@ export type Screenshot = {
 
 export type ExecutorKind = 'solari' | 'fetch'
 
+/**
+ * What a run configures on its executor, beyond the provider's own credentials.
+ *
+ * `headers` is the project's verification header set - a secret that opens an
+ * edge, most often a WAF rule that skips a bot challenge for whoever can
+ * present it. It comes with `targetOrigin` and is meaningless without it: the
+ * executor sends these headers to that origin and to nothing else, because a
+ * target page is attacker-controlled and a journey follows the links it finds.
+ * One link to another host would otherwise hand a stranger the key to the door.
+ */
+export type ExecutorOptions = {
+  headers?: Readonly<Record<string, string>>
+  /** Origin of the project's target URL. Required when `headers` is set. */
+  targetOrigin?: string
+}
+
 /** The keys a journey is allowed to send. Deliberately a very short list. */
 export type PageKey = 'Escape' | 'Enter' | 'Tab'
 
@@ -99,6 +115,15 @@ export interface BrowserExecutor {
   readonly kind: ExecutorKind
   /** Provider session id, when the provider has one. */
   readonly sessionId: string | null
+  /**
+   * Whether the run's verification headers are actually being sent.
+   *
+   * False only when a provider refused the mechanism that attaches them. The
+   * run goes ahead without them, and the report has to say so - a run that
+   * quietly stopped presenting its credential would be reported as an
+   * application that started challenging its own verifier.
+   */
+  readonly headersAttached: boolean
 
   navigate(url: string): Promise<ActionResult>
   readPage(): Promise<PageObservation>

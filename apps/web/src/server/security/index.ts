@@ -19,6 +19,13 @@ import {
 
 export { normaliseRepoUrl, UnsafeTargetError }
 export { CredentialError, normaliseLoginPath }
+export {
+  headersForUrl,
+  HeaderError,
+  normaliseHeaderName,
+  normaliseHeaderValue,
+  sameOrigin,
+} from './headers'
 export { redactSecrets, redactDeep, REDACTED } from './redact'
 
 /**

@@ -6,6 +6,10 @@
  * reflows. Opening one opens the viewer rather than the raw image endpoint:
  * the point of a screenshot is what it shows next to its label, and a browser
  * tab full of PNG with an opaque URL has lost both.
+ *
+ * Both halves have to work under a finger as well as a cursor, which is most
+ * of what is going on below: the strip takes a wheel, a drag, the arrows, and
+ * the keyboard; the viewer takes a swipe, the arrows, and the keyboard.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -96,9 +100,17 @@ export function ScreenshotCarousel({ shots }: { shots: Evidence[] }) {
 
   if (shots.length === 0) return null
 
+  const scrollable = reach.left || reach.right
+
   return (
-    <div className="relative">
-      {shots.length > 1 ? (
+    /*
+     * `min-w-0` is load-bearing. This sits in a grid, and a grid item's
+     * automatic minimum size is its content's, which without this is the whole
+     * unwrapped strip: the item grew past the column, the page scrolled
+     * sideways instead of the strip, and the arrows had nothing to move.
+     */
+    <div className="relative min-w-0">
+      {scrollable ? (
         <>
           <StripButton
             side="left"
@@ -116,13 +128,30 @@ export function ScreenshotCarousel({ shots }: { shots: Evidence[] }) {
       <ul
         ref={strip}
         onScroll={measure}
-        // `snap-x` lands a card against the edge rather than half of one, and
+        tabIndex={0}
+        aria-label={`${shots.length} screenshots`}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowRight') {
+            event.preventDefault()
+            scrollBy(1)
+          }
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault()
+            scrollBy(-1)
+          }
+        }}
+        // `snap-x` lands a card against the edge rather than half of one;
         // `overscroll-x-contain` stops a flick at the end of the strip from
-        // turning into a browser back-swipe.
-        className="scrollbar-thin m-0 flex snap-x snap-mandatory list-none gap-3 overflow-x-auto overscroll-x-contain p-0 pb-2"
+        // turning into a browser back-swipe; `touch-pan-x` tells the compositor
+        // this is a horizontal scroller before the first frame of a drag, which
+        // is what stops a diagonal swipe being handed to the page instead.
+        className="scrollbar-thin m-0 flex w-full max-w-full snap-x snap-mandatory list-none touch-pan-x gap-3 overflow-x-auto overscroll-x-contain p-0 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-kumo-focus/50"
       >
         {shots.map((shot, index) => (
-          <li key={shot.id} className="w-[15rem] shrink-0 snap-start sm:w-[19rem]">
+          <li
+            key={shot.id}
+            className="w-[13rem] shrink-0 snap-start sm:w-[19rem]"
+          >
             <button
               type="button"
               onClick={() => setOpen(index)}
@@ -132,6 +161,7 @@ export function ScreenshotCarousel({ shots }: { shots: Evidence[] }) {
                 src={source(shot.id)}
                 alt={shot.label}
                 loading="lazy"
+                draggable={false}
                 className="image-frame block aspect-[16/10] w-full bg-kumo-recessed object-cover object-top"
               />
               <span className="block truncate px-2.5 py-2 text-xs text-kumo-subtle">
@@ -160,6 +190,11 @@ export function ScreenshotCarousel({ shots }: { shots: Evidence[] }) {
  * Kept mounted and disabled at the ends rather than unmounted: a control that
  * appears and disappears under the cursor makes the strip feel like it is
  * moving on its own.
+ *
+ * It sits inside the strip on a narrow screen and outside it once there is
+ * margin to hang it in. Outside is better - it never covers a screenshot - but
+ * on a phone the gutter is five pixels of page padding, so outside means
+ * clipped, which is how the strip ended up with no visible way forward.
  */
 function StripButton({
   side,
@@ -176,22 +211,34 @@ function StripButton({
       aria-label={side === 'left' ? 'Scroll left' : 'Scroll right'}
       disabled={disabled}
       onClick={onClick}
-      className={`absolute top-[35%] z-10 hidden size-8 items-center justify-center rounded-full border border-kumo-hairline bg-kumo-base text-kumo-strong shadow-sm transition-opacity sm:flex ${
+      className={`absolute top-[32%] z-10 flex size-9 items-center justify-center rounded-full border border-kumo-hairline bg-kumo-base text-kumo-strong shadow-md transition-opacity sm:size-8 sm:shadow-sm ${
         disabled
-          ? 'cursor-default opacity-0'
+          ? 'pointer-events-none cursor-default opacity-0'
           : 'cursor-pointer opacity-100 hover:bg-kumo-tint'
-      } ${side === 'left' ? '-left-3' : '-right-3'}`}
+      } ${side === 'left' ? 'left-1.5 sm:-left-3' : 'right-1.5 sm:-right-3'}`}
     >
-      {side === 'left' ? <CaretLeftIcon size={14} /> : <CaretRightIcon size={14} />}
+      {side === 'left' ? (
+        <CaretLeftIcon size={16} />
+      ) : (
+        <CaretRightIcon size={16} />
+      )}
     </button>
   )
 }
+
+/** Past this much horizontal travel, a drag is a swipe rather than a tap. */
+const SWIPE_THRESHOLD = 56
 
 /**
  * The viewer.
  *
  * Its own element rather than a library: it needs a backdrop, arrow keys,
- * Escape, and a link to the raw artifact, and that is all it needs.
+ * Escape, a swipe, and a link to the raw artifact, and that is all it needs.
+ *
+ * The layout is one column at every width. What changes on a small screen is
+ * where the arrows go: flanking the image is right when there is room beside
+ * it and wrong on a phone, where the image is already the full width, so there
+ * they overlay its edges instead.
  */
 function Lightbox({
   shots,
@@ -205,6 +252,11 @@ function Lightbox({
   onClose: () => void
 }) {
   const shot = shots[index]
+  /** Horizontal travel of the swipe in progress, so the image tracks the finger. */
+  const [drag, setDrag] = useState(0)
+  const gesture = useRef<{ x: number; y: number; horizontal: boolean } | null>(
+    null,
+  )
 
   const step = useCallback(
     (direction: 1 | -1) => {
@@ -232,30 +284,77 @@ function Lightbox({
     }
   }, [onClose, step])
 
+  /*
+   * Swipe.
+   *
+   * The first few pixels decide whether the gesture is horizontal. Until then
+   * nothing moves and nothing is claimed, so a vertical drag on a tall
+   * screenshot is still a vertical drag. Once it is horizontal the image
+   * follows the finger, which is the whole difference between a viewer that
+   * responds to a swipe and one that merely acts on it afterwards.
+   */
+  function onTouchStart(event: React.TouchEvent) {
+    if (shots.length < 2 || event.touches.length !== 1) return
+    const touch = event.touches[0]
+    gesture.current = { x: touch.clientX, y: touch.clientY, horizontal: false }
+  }
+
+  function onTouchMove(event: React.TouchEvent) {
+    const start = gesture.current
+    if (!start || event.touches.length !== 1) return
+
+    const touch = event.touches[0]
+    const dx = touch.clientX - start.x
+    const dy = touch.clientY - start.y
+
+    if (!start.horizontal) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+      if (Math.abs(dx) <= Math.abs(dy)) {
+        gesture.current = null
+        return
+      }
+      start.horizontal = true
+    }
+
+    setDrag(dx)
+  }
+
+  function onTouchEnd() {
+    const start = gesture.current
+    gesture.current = null
+    if (start?.horizontal && Math.abs(drag) > SWIPE_THRESHOLD) {
+      step(drag < 0 ? 1 : -1)
+    }
+    setDrag(0)
+  }
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={shot.label}
-      className="fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm"
+      // `dvh` rather than `inset-0`: on a phone the browser chrome collapses as
+      // you scroll, and a viewer sized to the static viewport put its controls
+      // under the address bar.
+      className="fixed inset-0 z-50 flex h-[100dvh] flex-col bg-black/85 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div className="flex items-center gap-3 px-4 py-3 text-white">
+      <div className="flex shrink-0 items-center gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 text-white sm:gap-3 sm:px-4 sm:py-3">
         <button
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent p-1 text-sm text-white/80 hover:text-white"
+          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent p-2 text-sm text-white/80 hover:text-white"
         >
-          <ArrowLeftIcon size={16} />
-          Back
+          <ArrowLeftIcon size={18} />
+          <span className="hidden sm:inline">Back</span>
         </button>
 
-        <span className="min-w-0 flex-1 truncate text-center text-sm">
+        <span className="min-w-0 flex-1 truncate text-center text-xs sm:text-sm">
           {shot.label}
         </span>
 
-        <span className="tabular shrink-0 text-xs text-white/60">
+        <span className="tabular shrink-0 px-1 text-xs text-white/60">
           {index + 1} / {shots.length}
         </span>
 
@@ -265,44 +364,59 @@ function Lightbox({
           rel="noreferrer"
           aria-label="Open the full image"
           onClick={(event) => event.stopPropagation()}
-          className="flex items-center p-1 text-white/80 no-underline hover:text-white"
+          className="flex shrink-0 items-center p-2 text-white/80 no-underline hover:text-white"
         >
-          <ArrowSquareOutIcon size={16} />
+          <ArrowSquareOutIcon size={18} />
         </a>
 
         <button
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="cursor-pointer rounded border-0 bg-transparent p-1 text-white/80 hover:text-white"
+          className="shrink-0 cursor-pointer rounded border-0 bg-transparent p-2 text-white/80 hover:text-white"
         >
-          <XIcon size={18} />
+          <XIcon size={20} />
         </button>
       </div>
 
       {/* Stops a click on the image itself from closing the viewer. */}
       <div
-        className="flex min-h-0 flex-1 items-center justify-center gap-3 px-3 pb-6"
+        className="relative flex min-h-0 flex-1 items-center justify-center px-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:gap-3 sm:px-3 sm:pb-6"
         onClick={(event) => event.stopPropagation()}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
       >
-        {shots.length > 1 ? (
-          <ViewerArrow side="left" onClick={() => step(-1)} />
-        ) : null}
+        {shots.length > 1 ? <ViewerArrow side="left" onClick={() => step(-1)} /> : null}
 
         <img
+          key={shot.id}
           src={source(shot.id)}
           alt={shot.label}
-          className="max-h-full max-w-full rounded-lg object-contain"
+          draggable={false}
+          style={
+            drag
+              ? { transform: `translateX(${drag}px)`, transition: 'none' }
+              : undefined
+          }
+          className="max-h-full max-w-full touch-pan-y rounded-lg object-contain transition-transform duration-200 select-none"
         />
 
-        {shots.length > 1 ? (
-          <ViewerArrow side="right" onClick={() => step(1)} />
-        ) : null}
+        {shots.length > 1 ? <ViewerArrow side="right" onClick={() => step(1)} /> : null}
       </div>
     </div>
   )
 }
 
+/**
+ * A viewer arrow.
+ *
+ * Absolute at every width rather than a flex sibling: on a phone the image
+ * takes the full width, so an arrow in the flow would squeeze it, and an arrow
+ * over its edge costs nothing. On a wide screen the same position lands in the
+ * empty space beside a portrait screenshot anyway.
+ */
 function ViewerArrow({
   side,
   onClick,
@@ -315,9 +429,15 @@ function ViewerArrow({
       type="button"
       aria-label={side === 'left' ? 'Previous screenshot' : 'Next screenshot'}
       onClick={onClick}
-      className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-white/10 text-white hover:bg-white/20"
+      className={`absolute top-1/2 z-10 flex size-11 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-black/40 text-white backdrop-blur-sm hover:bg-white/25 sm:size-10 sm:bg-white/10 ${
+        side === 'left' ? 'left-2 sm:left-3' : 'right-2 sm:right-3'
+      }`}
     >
-      {side === 'left' ? <CaretLeftIcon size={18} /> : <CaretRightIcon size={18} />}
+      {side === 'left' ? (
+        <CaretLeftIcon size={20} />
+      ) : (
+        <CaretRightIcon size={20} />
+      )}
     </button>
   )
 }

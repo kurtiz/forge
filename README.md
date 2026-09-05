@@ -137,6 +137,7 @@ exists because discovery on its own gets a specific thing wrong.
 | **Test accounts** | An application behind a login. One account per role, because what an administrator can reach is not what a member can reach; runs sign in with the one marked default. The password is encrypted with AES-GCM, decrypted only inside the run's Durable Object at the moment it is typed, and never read back — editing with a blank password field keeps the stored one, which is how a label or a login path gets corrected later. |
 | **Planned journeys** | Discovery is a guess, and a different guess each run: the journey a team actually cares about can drop off the list because a model ranked a settings page higher this time. A planned journey runs every time, in priority order, before anything discovered — and *instead of* a discovered one, because the budget is the same either way. |
 | **Sample data** | The Operator invents what it types, and invented data is right up until the application checks it against itself: a form that looks a patient up by phone number will not find one for a number Forge made up. A sample value is somebody who knows the application saying *this one exists*, matched to a field by its label. Never a credential — these are shown back in the console and written into evidence like any other typed value. |
+| **Request headers** | An edge that challenges automated traffic, or a preview behind an access gate. Store a header and its secret value, write one edge rule that admits requests carrying it, and the run gets in without the protection being relaxed for anyone else. Values are encrypted like a password and never shown again; they are sent to the project's own origin and nowhere else, so a link off the site cannot carry one away. `User-Agent` cannot be set — Forge identifies itself honestly. |
 | **Schedule** | Re-verification on a cadence. See [Scheduled monitoring](#scheduled-monitoring). |
 
 ### A run
@@ -162,15 +163,43 @@ records which executor produced it and is labelled with what started it —
 `manual`, `cli`, `scheduled`, `pull_request`, or `verify_fix` — so a hand-started
 run is never mistaken for an automated one in a history.
 
+A run against a target behind bot protection stops at the front door. Cloudflare,
+DataDome and the like answer **HTTP 200** with an interstitial, so nothing about
+the run looks wrong: journeys get discovered from the challenge screen, none of
+them finds a control — the widget is in a cross-origin frame the page model
+cannot see into — and the report describes an application with nothing on it,
+which is false in every sentence. Forge recognises the interstitial at the entry
+page and ends the run there with one `BOT_CHALLENGE` finding that names the
+service, classified `environment` so it cannot fail a pull request. It does not
+try to solve or evade the challenge, and the fix instructions it writes forbid
+the agent reading them from trying either.
+
+The way through is a door you open on purpose. Put a header and a secret value
+under **Request headers** on the project; Forge sends them on every request to
+that origin, and one rule at your edge — skip the challenge for requests
+carrying that header with that value, on that hostname — lets the run in while
+everyone else still meets the challenge. The finding's fix instructions adapt to
+which half is already done: with no header configured they ask for the secret
+first, and with one configured they name it and ask for the rule.
+
 ### A finding
 
 The verdict, and then the numbers that decide whether to act on it.
 
 - **Classification** — `confirmed_bug`, `flaky`, `environment`, `agent_error`, `unknown`
-- **Failure class** — `APPLICATION_BUG`, `AUTH_FAILURE`, `NETWORK_FAILURE`, `TIMEOUT`, `ENVIRONMENT_FAILURE`, `BROWSER_FAILURE`, `SOLARI_FAILURE`, `AGENT_ERROR`, `UNKNOWN`
+- **Failure class** — `APPLICATION_BUG`, `AUTH_FAILURE`, `BOT_CHALLENGE`, `NETWORK_FAILURE`, `TIMEOUT`, `ENVIRONMENT_FAILURE`, `BROWSER_FAILURE`, `SOLARI_FAILURE`, `AGENT_ERROR`, `UNKNOWN`
 - **Severity** — critical, high, medium, low
 - **Reproduction** — how many of *n* attempts failed the same way
 - **Confidence**, and where investigation ran, a proposed root cause with the files it points at
+
+Then **How to fix this**: who owns the change — application code, infrastructure,
+or this project's own verification settings — the steps to take, and a brief
+written for a coding agent, carrying the journey, the steps as they ran, the
+verdict and the files the source investigation touched. It is derived from the
+finding by deterministic rules, so it says the same thing every time, and it ends
+with the rules that stop an agent from changing the test instead of the code. The
+same block, collapsed, goes into the GitHub check for the finding that decided
+it.
 
 Then the steps that produced it, then the evidence behind each one. Two actions:
 **Verify fix** re-runs that exact journey against the current deployment and
@@ -334,7 +363,7 @@ apps/
         contracts/        zod schemas shared across every boundary
         db/               Drizzle schema and client (source of truth for D1)
         domain/           run state machine, classification, scoring, budgets
-        security/         target-URL validation (SSRF), repository URL policy
+        security/         target-URL validation (SSRF), header policy, repo URL policy
         execution/        BrowserExecutor interface, Solari CDP, HTTP fallback
         agent/            Explorer, Operator, Judge, prompts, model router
         evidence/         R2 artifact store and metadata
@@ -389,7 +418,7 @@ wrangler secret put FORGE_CREDENTIAL_KEY  # optional; needed to store app logins
 # Optional; all three together enable pull request verification
 wrangler secret put GITHUB_APP_ID
 wrangler secret put GITHUB_APP_PRIVATE_KEY
-wrangler secret put GITHUB_WEBHOOK_SECRET
+wrangler secret put GITHUB_APP_WEBHOOK_SECRET
 
 # Optional; both together enable "Continue with GitHub" on the sign-in page
 wrangler secret put GITHUB_CLIENT_ID
@@ -418,7 +447,7 @@ without the rest and says so in the run rather than in the documentation.
 | `FORGE_CREDENTIAL_KEY` | Encrypts stored test-account passwords. Needed only to store an application login |
 | `CLOUDFLARE_ACCOUNT_ID` | Names the account for the remote Workers AI binding in development |
 | `AI_GATEWAY_URL` · `AI_GATEWAY_KEY` · `AI_GATEWAY_MODEL` | Point the agents at an OpenAI-compatible endpoint instead of Workers AI |
-| `GITHUB_APP_ID` · `GITHUB_APP_PRIVATE_KEY` · `GITHUB_WEBHOOK_SECRET` · `GITHUB_APP_SLUG` | Pull request verification; needed together |
+| `GITHUB_APP_ID` · `GITHUB_APP_PRIVATE_KEY` · `GITHUB_APP_WEBHOOK_SECRET` · `GITHUB_APP_SLUG` | Pull request verification; needed together |
 | `GITHUB_CLIENT_ID` · `GITHUB_CLIENT_SECRET` | "Continue with GitHub" on the sign-in page |
 | `FORGE_DEMO_FIXED` | Repairs the seeded demo defects, so **Verify fix** has something to pass |
 
@@ -487,6 +516,7 @@ https://forge.papiliocurtis.workers.dev/runs/run_123
 | `--goal <text>` | the workflow that matters most |
 | `--name <text>` | project name, when one is created |
 | `--json` | the whole report as JSON, on stdout |
+| `--fix` | print the coding-agent prompt for the leading finding into the log |
 | `--no-wait` | start the run and exit without watching it |
 | `--timeout <seconds>` | give up waiting; the run continues (default 900) |
 
@@ -501,9 +531,19 @@ CI gate as it stands, with no wrapper script:
     FORGE_TOKEN: ${{ secrets.FORGE_TOKEN }}
 ```
 
+Every run prints **How to fix** for the finding that decided it: who owns the
+change, the steps, and where the coding-agent prompt is. `--fix` prints the
+prompt itself into the log, verbatim, for piping somewhere that will act on it:
+
+```bash
+forge verify --url https://preview.example.com --fix
+```
+
 A flaky or environmental failure is printed but does not fail the command,
-because blocking a merge on a rate limit teaches people to skip the check. If
-you would rather draw that line yourself, `--json` prints the whole report:
+because blocking a merge on a rate limit teaches people to skip the check — a
+run stopped by bot protection is one of these, and it says so in the first line
+rather than claiming the application was reachable. If you would rather draw
+that line yourself, `--json` prints the whole report, `remediation` included:
 
 ```bash
 forge verify --url https://preview.example.com --json | jq '.findings[].classification'
@@ -609,6 +649,14 @@ actually due, so every cadence shares one trigger.
 Notifications go to a webhook on the transitions that matter: the first
 failure, the recovery, and every fourth consecutive failure after that. Steady
 green says nothing, and a week-long outage does not produce a week of alerts.
+
+The payload carries what to do about it, not only what happened. `text` — what
+a chat client renders — leads with the project, the summary, and one **How to
+fix** line with a link to the finding; the JSON adds a `remediation` object
+with the owner, the steps, and the coding-agent prompt, for a webhook that
+feeds something able to act on it. Without that, an alert about a target
+answering a bot challenge says "nothing was verified" and leaves whoever is on
+call with no next step.
 
 ---
 
@@ -722,11 +770,21 @@ Next, roughly in order:
 
 ## Further reading
 
+In the console itself, **/docs/concepts** defines the vocabulary — project, run,
+journey, finding, evidence, classification, reproduction, confidence — with an
+analogy and an example for each, and says in one page what Forge is for. It is
+reachable from **Docs** in the top bar of every page, signed in or not.
+Everything below is the version an engineer reads in the repository.
+
 - [`docs/architecture.md`](docs/architecture.md) — the three layers, and why the
   boundaries fall where they do
 - [`docs/agent-design.md`](docs/agent-design.md) — four agents, two of which use
   no model at all
 - [`docs/security-model.md`](docs/security-model.md) — the threats a system that
   points a browser at a stranger's URL actually has
+- [`docs/bot-protection.md`](docs/bot-protection.md) — what happens when the
+  target challenges the verifier, and how to let it through per service
+- [`docs/github-app.md`](docs/github-app.md) — every field of the GitHub App
+  form, and which three secrets switch pull request verification on
 - [`docs/releasing.md`](docs/releasing.md) — how a commit message becomes a
   versioned binary on a GitHub release

@@ -12,12 +12,18 @@ import type { JsonValue } from '@/server/contracts'
 import { executeRun, type EngineInput } from './engine'
 import { publishRunOutcome } from './outcome'
 import * as repo from './repository'
+import { RunWatchers } from './watchers'
 
 type StartMessage = EngineInput
 
 export class RunSessionDO extends DurableObject<Env> {
-  /** SSE writers for clients currently watching this run. */
-  private readonly watchers = new Set<WritableStreamDefaultWriter<Uint8Array>>()
+  /**
+   * Clients currently watching this run.
+   *
+   * `RunWatchers` rather than a bare `Set` because a watcher that stops
+   * reading must not be able to stall the engine. See the note there.
+   */
+  private readonly watchers = new RunWatchers()
   private canceled = false
   private sequence = 0
   private running = false
@@ -76,9 +82,10 @@ export class RunSessionDO extends DurableObject<Env> {
     const writer = writable.getWriter()
     this.watchers.add(writer)
 
-    void writer
-      .write(new TextEncoder().encode(': connected\n\n'))
-      .catch(() => this.watchers.delete(writer))
+    // Not awaited: this runs before the response is returned, so nothing is
+    // reading the other end of the stream yet and the write cannot land until
+    // it is. Failures are picked up by the next broadcast.
+    void writer.write(new TextEncoder().encode(': connected\n\n')).catch(() => undefined)
 
     return new Response(readable, {
       headers: {
@@ -121,29 +128,14 @@ export class RunSessionDO extends DurableObject<Env> {
         createdAt: new Date().toISOString(),
       }))
 
-    const frame = new TextEncoder().encode(
-      `event: run\ndata: ${JSON.stringify(event)}\n\n`,
+    await this.watchers.broadcast(
+      new TextEncoder().encode(`event: run\ndata: ${JSON.stringify(event)}\n\n`),
     )
-
-    for (const watcher of [...this.watchers]) {
-      try {
-        await watcher.write(frame)
-      } catch {
-        // The client went away mid-run; drop it and keep going.
-        this.watchers.delete(watcher)
-      }
-    }
   }
 
   private async closeWatchers(): Promise<void> {
-    for (const watcher of [...this.watchers]) {
-      try {
-        await watcher.write(new TextEncoder().encode('event: done\ndata: {}\n\n'))
-        await watcher.close()
-      } catch {
-        // Already gone.
-      }
-    }
-    this.watchers.clear()
+    await this.watchers.closeAll(
+      new TextEncoder().encode('event: done\ndata: {}\n\n'),
+    )
   }
 }

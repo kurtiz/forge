@@ -16,6 +16,8 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as DemoIndexRouteImport } from './routes/demo/index'
 import { Route as DemoSplatRouteImport } from './routes/demo/$'
+import { Route as DocsConceptsRouteImport } from './routes/docs/concepts'
+import { Route as DocsRequestHeadersRouteImport } from './routes/docs/request-headers'
 import { Route as FindingsFindingIdRouteImport } from './routes/findings/$findingId'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 import { Route as ProjectsNewRouteImport } from './routes/projects/new'
@@ -64,6 +66,16 @@ const DemoIndexRoute = DemoIndexRouteImport.update({
 const DemoSplatRoute = DemoSplatRouteImport.update({
   id: '/demo/$',
   path: '/demo/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsConceptsRoute = DocsConceptsRouteImport.update({
+  id: '/docs/concepts',
+  path: '/docs/concepts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsRequestHeadersRoute = DocsRequestHeadersRouteImport.update({
+  id: '/docs/request-headers',
+  path: '/docs/request-headers',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FindingsFindingIdRoute = FindingsFindingIdRouteImport.update({
@@ -144,6 +156,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/demo/$': typeof DemoSplatRoute
+  '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/request-headers': typeof DocsRequestHeadersRoute
   '/findings/$findingId': typeof FindingsFindingIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects/new': typeof ProjectsNewRoute
@@ -167,6 +181,8 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/demo/$': typeof DemoSplatRoute
+  '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/request-headers': typeof DocsRequestHeadersRoute
   '/findings/$findingId': typeof FindingsFindingIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects/new': typeof ProjectsNewRoute
@@ -191,6 +207,8 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/demo/$': typeof DemoSplatRoute
+  '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/request-headers': typeof DocsRequestHeadersRoute
   '/findings/$findingId': typeof FindingsFindingIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects/new': typeof ProjectsNewRoute
@@ -216,6 +234,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sign-in'
     | '/demo/$'
+    | '/docs/concepts'
+    | '/docs/request-headers'
     | '/findings/$findingId'
     | '/projects/$projectId'
     | '/projects/new'
@@ -239,6 +259,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sign-in'
     | '/demo/$'
+    | '/docs/concepts'
+    | '/docs/request-headers'
     | '/findings/$findingId'
     | '/projects/$projectId'
     | '/projects/new'
@@ -262,6 +284,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sign-in'
     | '/demo/$'
+    | '/docs/concepts'
+    | '/docs/request-headers'
     | '/findings/$findingId'
     | '/projects/$projectId'
     | '/projects/new'
@@ -286,6 +310,8 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SignInRoute: typeof SignInRoute
   DemoSplatRoute: typeof DemoSplatRoute
+  DocsConceptsRoute: typeof DocsConceptsRoute
+  DocsRequestHeadersRoute: typeof DocsRequestHeadersRoute
   FindingsFindingIdRoute: typeof FindingsFindingIdRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   ProjectsNewRoute: typeof ProjectsNewRoute
@@ -350,6 +376,20 @@ declare module '@tanstack/react-router' {
       path: '/demo/$'
       fullPath: '/demo/$'
       preLoaderRoute: typeof DemoSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs/concepts': {
+      id: '/docs/concepts'
+      path: '/docs/concepts'
+      fullPath: '/docs/concepts'
+      preLoaderRoute: typeof DocsConceptsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs/request-headers': {
+      id: '/docs/request-headers'
+      path: '/docs/request-headers'
+      fullPath: '/docs/request-headers'
+      preLoaderRoute: typeof DocsRequestHeadersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/findings/$findingId': {
@@ -484,6 +524,8 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SignInRoute: SignInRoute,
   DemoSplatRoute: DemoSplatRoute,
+  DocsConceptsRoute: DocsConceptsRoute,
+  DocsRequestHeadersRoute: DocsRequestHeadersRoute,
   FindingsFindingIdRoute: FindingsFindingIdRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   ProjectsNewRoute: ProjectsNewRoute,

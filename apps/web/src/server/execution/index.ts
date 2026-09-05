@@ -8,7 +8,7 @@
 import { env } from 'cloudflare:workers'
 import { FetchBrowserExecutor } from './fetch-executor'
 import { SolariBrowserExecutor } from './solari-executor'
-import type { BrowserExecutor, ExecutorKind } from './types'
+import type { BrowserExecutor, ExecutorKind, ExecutorOptions } from './types'
 
 export * from './types'
 export { FetchBrowserExecutor } from './fetch-executor'
@@ -18,13 +18,16 @@ export function plannedExecutorKind(): ExecutorKind {
   return env.SOLARI_API_KEY ? 'solari' : 'fetch'
 }
 
-export async function createExecutor(): Promise<BrowserExecutor> {
+export async function createExecutor(
+  options: ExecutorOptions = {},
+): Promise<BrowserExecutor> {
   const apiKey = env.SOLARI_API_KEY
-  if (!apiKey) return new FetchBrowserExecutor()
+  if (!apiKey) return new FetchBrowserExecutor(options)
 
   return SolariBrowserExecutor.create({
     apiKey,
     baseUrl: env.SOLARI_BASE_URL || undefined,
     recording: true,
+    ...options,
   })
 }

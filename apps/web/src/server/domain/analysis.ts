@@ -28,6 +28,16 @@ export type FailureSignal = {
   /** The step could not proceed because the app demanded credentials. */
   authWall?: boolean
   /**
+   * A bot-protection service answered instead of the application.
+   *
+   * Set from `detectBotChallenge`, and kept apart from every other signal
+   * because a challenge wears their clothes: it answers 200 like a working
+   * page, 403 like a permission problem, and shows no control at all like an
+   * empty one. Whatever it looks like, nothing was learned about the
+   * application, and a finding that says otherwise is worse than no finding.
+   */
+  botChallenge?: boolean
+  /**
    * The application asked a signed-in visitor to sign in again.
    *
    * Distinct from `authWall`, which is Forge arriving without credentials. This
@@ -54,6 +64,9 @@ export function classifyFailure(signal: FailureSignal): FailureClass {
   if (signal.executorError) return 'BROWSER_FAILURE'
   // Before every status rule: a 404 on a URL Forge made up is Forge's mistake.
   if (signal.inventedPath && signal.status === 404) return 'AGENT_ERROR'
+  // Also before them: an edge that stopped the request answers with whatever
+  // status it likes, and none of them describe the application behind it.
+  if (signal.botChallenge) return 'BOT_CHALLENGE'
   // Checked before `authWall`: a session Forge established and the application
   // ignored is the application's defect, not a missing credential.
   if (signal.staleAuth) return 'APPLICATION_BUG'
@@ -101,7 +114,8 @@ export function classificationFor(
   if (
     failureClass === 'ENVIRONMENT_FAILURE' ||
     failureClass === 'NETWORK_FAILURE' ||
-    failureClass === 'AUTH_FAILURE'
+    failureClass === 'AUTH_FAILURE' ||
+    failureClass === 'BOT_CHALLENGE'
   ) {
     return 'environment'
   }
@@ -231,22 +245,33 @@ export function summariseRun(input: {
   skipped: number
   findings: number
   authFailed: boolean
+  /** A bot-protection service answered instead of the application. */
+  blockedByChallenge?: boolean
 }): string {
   const parts: string[] = []
 
-  if (input.total === 0) {
+  /*
+   * Said first and said plainly. A run that never reached the application has
+   * no journey numbers worth printing, and "0 of 2 journeys passed" in front
+   * of this sentence reads as a broken application rather than a closed door.
+   */
+  if (input.blockedByChallenge) {
+    parts.push(
+      'A bot-protection challenge answered every request, so nothing in the application was verified.',
+    )
+  } else if (input.total === 0) {
     parts.push('No journeys were discovered on the entry page.')
   } else {
     parts.push(`${input.passed} of ${input.total} journeys passed.`)
   }
 
-  if (input.skipped > 0) {
+  if (input.skipped > 0 && !input.blockedByChallenge) {
     parts.push(
       `${input.skipped} could not be attempted: nothing on the page matched them.`,
     )
   }
 
-  if (input.authFailed) {
+  if (input.authFailed && !input.blockedByChallenge) {
     parts.push('Forge could not sign in, so nothing behind the login was verified.')
   }
 

@@ -12,7 +12,7 @@
  * disagree about what a run found.
  */
 import { summarise, type Tone } from './summary.js'
-import type { Finding, RunReport } from './types.js'
+import type { Finding, Remediation, RunReport } from './types.js'
 /** Written as an escape sequence so the source file stays printable. */
 const ESC = '\u001b['
 
@@ -85,7 +85,10 @@ export function clearProgress(): void {
 
 /* ----------------------------------------------------------------- report */
 
-export function printReport(report: RunReport): void {
+export function printReport(
+  report: RunReport,
+  options: { fixPrompt?: boolean } = {},
+): void {
   const summary = summarise(report)
 
   if (summary.state !== 'complete') {
@@ -117,6 +120,8 @@ export function printReport(report: RunReport): void {
     }
   }
 
+  if (summary.fix) printFix(summary.fix, options.fixPrompt === true)
+
   out('')
   // The count is already implied by the findings above, so only a clean or an
   // unexercised run needs its verdict spelled out.
@@ -129,6 +134,40 @@ export function printReport(report: RunReport): void {
     out(dim('Replay:'))
     out(summary.replayUrl)
   }
+}
+
+/**
+ * What to do about it.
+ *
+ * The steps always, the agent brief only when asked for. A CI log is read by
+ * whoever is on shift, and two kilobytes of prompt in front of them every run
+ * is how a log stops being read at all - so the default is the headline, the
+ * steps, and where the prompt is. `--fix` puts the prompt itself in the log,
+ * for anyone piping it straight into an agent.
+ */
+function printFix(fix: Remediation, withPrompt: boolean): void {
+  if (fix.owner === 'none') return
+
+  out('')
+  out(bold('How to fix'))
+  out(`  ${fix.headline}`)
+  fix.steps.forEach((step, index) => out(dim(`  ${index + 1}. ${step}`)))
+
+  if (!fix.prompt) return
+
+  if (withPrompt) {
+    out('')
+    out(dim('  Prompt for a coding agent:'))
+    // Verbatim and unindented: this gets piped into a file or an agent, and
+    // leading spaces are the kind of thing that turns a heading into a code
+    // block on the way there.
+    out(fix.prompt)
+    return
+  }
+
+  out('')
+  out(dim('  A prompt for your coding agent is on the finding page (--fix prints it here):'))
+  out(`  ${fix.findingUrl}`)
 }
 
 function printFinding(finding: Finding): void {

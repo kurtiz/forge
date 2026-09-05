@@ -2,7 +2,9 @@
  * The account menu.
  *
  * An avatar in the top bar, and behind it who you are signed in as and the two
- * things you can do about it. Sign-out asks first: it is one click from every
+ * things you can do about it. Only account routes live here: Concepts moved
+ * into the top bar, where a signed-out visitor - who never sees this menu -
+ * can reach it too. Sign-out asks first: it is one click from every
  * page in the product, and for a guest it is not reversible - the session is
  * the only way back into that account.
  */

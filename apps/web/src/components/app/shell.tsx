@@ -12,12 +12,22 @@ import { ThemeToggle } from "@/components/theme";
 import type { SessionUser } from "@/server/auth";
 import type { ReactNode } from "react";
 
+/**
+ * The mark: an F, and a tick in the accent.
+ *
+ * The view box is not `0 0 24 24`. At 24 the tick's square cap ran a whole
+ * unit past the right edge and the viewport clipped its tip flat, which is
+ * invisible at 18px and unmistakable anywhere the mark is shown large. The box
+ * below is 25 units square, positioned so the artwork - which spans x 2.8 to
+ * 25.0 and y 2.8 to 21.2, caps included - sits centred inside it with nothing
+ * touching an edge. The paths are untouched: the framing was the bug.
+ */
 export function ForgeMark({ size = 18 }: { size?: number }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox="1.4 -0.5 25 25"
       fill="none"
       aria-hidden
       className="shrink-0"
@@ -59,16 +69,35 @@ export function TopBar({
           <span className="text-[15px] font-semibold tracking-tight">Forge</span>
         </Link>
 
-        <div className="ml-auto flex items-center gap-2">
-          {right}
+        {/*
+          * Navigation, then actions.
+          *
+          * Docs is unconditional: the concepts page is the answer to "what is
+          * this actually doing", which is a question people have before they
+          * have an account, and it is the only route in the chrome that a
+          * signed-out visitor can follow. It stays visible at every width
+          * because, unlike Settings, there is no account menu behind it to
+          * fall back to - a signed-out visitor has no menu at all.
+          */}
+        <nav className="ml-auto flex items-center gap-4 text-sm">
+          <Link
+            to="/docs/concepts"
+            className="text-kumo-subtle no-underline hover:text-kumo-strong"
+          >
+            Docs
+          </Link>
           {user && !user.isAnonymous ? (
             <Link
               to="/settings"
-              className="hidden text-sm text-kumo-subtle no-underline hover:text-kumo-strong sm:inline"
+              className="hidden text-kumo-subtle no-underline hover:text-kumo-strong sm:inline"
             >
               Settings
             </Link>
           ) : null}
+        </nav>
+
+        <div className="flex items-center gap-2">
+          {right}
           <ThemeToggle/>
           {user ? <AccountChip user={user}/> : null}
         </div>
@@ -149,23 +178,34 @@ export function PageHeader({
   );
 }
 
-/** A labelled section separated by a hairline rather than wrapped in a card. */
+/**
+ * A labelled section separated by a hairline rather than wrapped in a card.
+ *
+ * `help` sits against the title rather than in `meta`, because it explains the
+ * section rather than measuring it, and a reader looking for "what is this"
+ * looks at the heading.
+ */
 export function Section({
                           title,
                           meta,
+                          help,
                           children,
                         }: {
   title: string
   meta?: ReactNode
+  help?: ReactNode
   children: ReactNode
 }) {
   return (
     <section className="mt-10">
       <div
-        className="mb-3 flex items-baseline justify-between gap-3 border-b border-kumo-hairline pb-2">
-        <h2 className="m-0 text-sm font-semibold text-kumo-strong">{title}</h2>
+        className="mb-3 flex items-center justify-between gap-3 border-b border-kumo-hairline pb-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h2 className="m-0 text-sm font-semibold text-kumo-strong">{title}</h2>
+          {help}
+        </div>
         {meta ? (
-          <div className="tabular text-xs text-kumo-subtle">{meta}</div>
+          <div className="tabular shrink-0 text-xs text-kumo-subtle">{meta}</div>
         ) : null}
       </div>
       {children}

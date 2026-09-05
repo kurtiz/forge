@@ -63,6 +63,7 @@ const addReferral: DiscoveredJourney = {
  */
 class ReferralFormExecutor implements BrowserExecutor {
   readonly kind = 'fetch' as const
+  readonly headersAttached = true
   readonly sessionId = null
   readonly actions: string[] = []
 
@@ -332,6 +333,7 @@ describe('typed fields', () => {
   /** A page that never changes, so the fills can be inspected on their own. */
   class RecordingExecutor implements BrowserExecutor {
     readonly kind = 'fetch' as const
+  readonly headersAttached = true
     readonly sessionId = null
     readonly actions: string[] = []
 

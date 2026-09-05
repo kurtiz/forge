@@ -36,6 +36,7 @@ const page = (patch: Partial<PageObservation>): PageObservation => ({
  */
 class WalkingExecutor implements BrowserExecutor {
   readonly kind = 'fetch' as const
+  readonly headersAttached = true
   readonly sessionId = null
   readonly actions: string[] = []
 

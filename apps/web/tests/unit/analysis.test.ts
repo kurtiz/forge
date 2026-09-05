@@ -6,6 +6,7 @@ import {
   rankJourneys,
   severityFor,
   shouldReproduce,
+  summariseRun,
   type FailureSignal,
 } from '@/server/domain/analysis'
 
@@ -22,6 +23,22 @@ describe('classifyFailure', () => {
     expect(classifyFailure(signal({ status: 429 }))).toBe('ENVIRONMENT_FAILURE')
     expect(classifyFailure(signal({ status: 401 }))).toBe('AUTH_FAILURE')
     expect(classifyFailure(signal({ authWall: true }))).toBe('AUTH_FAILURE')
+  })
+
+  it('calls a bot challenge what it is, whatever status it arrived with', () => {
+    // The status a challenge answers with says nothing about the application:
+    // 200 would be read as a working page, 403 as a permission problem, and
+    // 503 as an outage. None of the three is what happened.
+    expect(classifyFailure(signal({ botChallenge: true }))).toBe('BOT_CHALLENGE')
+    expect(classifyFailure(signal({ botChallenge: true, status: 200 }))).toBe(
+      'BOT_CHALLENGE',
+    )
+    expect(classifyFailure(signal({ botChallenge: true, status: 403 }))).toBe(
+      'BOT_CHALLENGE',
+    )
+    expect(classifyFailure(signal({ botChallenge: true, status: 503 }))).toBe(
+      'BOT_CHALLENGE',
+    )
   })
 
   it('calls a server error an application bug', () => {
@@ -97,6 +114,12 @@ describe('classificationFor', () => {
     expect(classificationFor('NETWORK_FAILURE', 3, 3)).toBe('environment')
     expect(classificationFor('BROWSER_FAILURE', 3, 3)).toBe('agent_error')
   })
+
+  it('never fails a check on a wall the application did not build', () => {
+    // Environment, so the check stays neutral: a WAF rule is not a defect, and
+    // blocking a merge on one teaches people to ignore the check.
+    expect(classificationFor('BOT_CHALLENGE', 1, 1)).toBe('environment')
+  })
 })
 
 describe('severityFor', () => {
@@ -135,6 +158,45 @@ describe('confidenceFor', () => {
       expect(value).toBeGreaterThanOrEqual(0)
       expect(value).toBeLessThanOrEqual(1)
     }
+  })
+})
+
+describe('summariseRun', () => {
+  const base = {
+    total: 0,
+    passed: 0,
+    failed: 0,
+    skipped: 0,
+    findings: 0,
+    authFailed: false,
+  }
+
+  it('leads with the wall when one stopped the run', () => {
+    const summary = summariseRun({
+      ...base,
+      findings: 1,
+      blockedByChallenge: true,
+    })
+    expect(summary).toContain('bot-protection challenge')
+    expect(summary).toContain('1 finding recorded')
+    // Journey counts describe an application this run never saw.
+    expect(summary).not.toContain('journeys passed')
+  })
+
+  it('does not blame the login for a run that never got that far', () => {
+    const summary = summariseRun({
+      ...base,
+      authFailed: true,
+      findings: 1,
+      blockedByChallenge: true,
+    })
+    expect(summary).not.toContain('sign in')
+  })
+
+  it('is unchanged for a run that reached the application', () => {
+    expect(summariseRun({ ...base, total: 3, passed: 3 })).toBe(
+      '3 of 3 journeys passed. No failures detected.',
+    )
   })
 })
 

@@ -77,7 +77,11 @@ function SettingsPage() {
         ) : null}
 
         <TokenSection tokens={tokens} isAnonymous={isAnonymous} />
-        <GitHubSection installations={installations} github={github} />
+        <GitHubSection
+          installations={installations}
+          github={github}
+          development={session.development}
+        />
       </Page>
     </>
   )
@@ -246,15 +250,32 @@ function TokenSection({
 
 /* ---------------------------------------------------------------- GitHub */
 
+/**
+ * The GitHub connection.
+ *
+ * Hidden entirely on a deployment where the App is not usable: with no install
+ * link to follow and no installation to manage there is nothing here anyone can
+ * act on, and telling a visitor which secrets the operator has not set is
+ * neither their business nor their problem. Development keeps the section, and
+ * says what is missing, on the same reasoning as the GitHub button on /sign-in:
+ * a feature that silently does not exist is the hardest kind to configure.
+ */
 function GitHubSection({
   installations,
   github,
+  development,
 }: {
   installations: Awaited<ReturnType<typeof getSettings>>['installations']
   github: Awaited<ReturnType<typeof getSettings>>['github']
+  development: boolean
 }) {
   const router = useRouter()
   const confirm = useConfirm()
+
+  const usable =
+    github.configured &&
+    (github.installUrl !== null || installations.length > 0)
+  if (!usable && !development) return null
 
   async function disconnect(installationId: string, login: string) {
     const ok = await confirm({
@@ -283,7 +304,7 @@ function GitHubSection({
         <Empty
           size="sm"
           title="Not available on this deployment"
-          description="Pull request verification needs a GitHub App. Set all three secrets — any one missing turns the integration off — then redeploy."
+          description="Pull request verification needs a GitHub App. Set all three secrets, then redeploy. Any one missing turns the integration off."
           contents={
             <div className="grid gap-3 text-left">
               <div className="rounded-md bg-kumo-base p-3 font-mono text-xs text-kumo-secondary">
@@ -295,7 +316,7 @@ function GitHubSection({
                 <br />
                 wrangler secret put GITHUB_APP_PRIVATE_KEY
                 <br />
-                wrangler secret put GITHUB_WEBHOOK_SECRET
+                wrangler secret put GITHUB_APP_WEBHOOK_SECRET
               </div>
               <p className="m-0 max-w-[52ch] text-xs text-kumo-subtle">
                 The private key must be PKCS#8. GitHub issues PKCS#1, so convert
@@ -307,21 +328,26 @@ function GitHubSection({
           }
         />
       ) : installations.length === 0 ? (
-        <div>
-          {github.installUrl ? (
-            <a href={github.installUrl} className="no-underline">
-              <Button variant="secondary" icon={<GithubLogoIcon size={16} />}>
-                Install the GitHub App
-              </Button>
-            </a>
-          ) : (
-            <Empty
-              size="sm"
-              title="Install link unavailable"
-              description="Set GITHUB_APP_SLUG so the console can link to the app's install page."
-            />
-          )}
-        </div>
+        github.installUrl ? (
+          <Empty
+            size="sm"
+            title="No account connected yet"
+            description="Install the app on the account that holds your repositories, and pick the ones Forge should verify. You can change that selection on GitHub at any time."
+            contents={
+              <a href={github.installUrl} className="no-underline">
+                <Button variant="secondary" icon={<GithubLogoIcon size={16} />}>
+                  Install the GitHub App
+                </Button>
+              </a>
+            }
+          />
+        ) : (
+          <Empty
+            size="sm"
+            title="Install link unavailable"
+            description="Set GITHUB_APP_SLUG so the console can link to the app's install page."
+          />
+        )
       ) : (
         <ul className="m-0 list-none divide-y divide-kumo-hairline p-0">
           {installations.map((installation) => (

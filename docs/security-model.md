@@ -186,6 +186,37 @@ run. No screenshot is taken during sign-in, since redaction cannot reach pixels.
 Single sign-on, magic links, and second factors are not supported. Use a
 dedicated test account, never production credentials.
 
+### Verification headers
+
+A project may also carry headers Forge attaches to its requests, in
+`project_headers` — the mechanism for letting a run past an edge that challenges
+automated traffic, and the one thing that makes a `BOT_CHALLENGE` finding
+actionable without weakening the edge for everyone else. Values are secrets and
+take the same four rules as a stored password: encrypted under
+`FORGE_CREDENTIAL_KEY`, decrypted only inside the run Durable Object, never
+returned by the API (`ProjectHeader` has no value field, and the run engine
+reads one only through `readProjectHeaders`), and registered with
+`redactSecrets` before the first request so an application that echoes one back
+cannot leak it into an event or an artifact.
+
+Two rules are specific to headers and are enforced in `security/headers.ts`:
+
+**Sent to one origin only.** A target page is attacker-controlled and journeys
+follow the links they find. A header is attached only to requests whose origin
+matches the project's target — scheme, host and port — so a link to another host
+carries nothing. In the browser executor this is why the Fetch domain is used to
+pause and modify individual requests rather than
+`Network.setExtraHTTPHeaders`, which would attach the secret to every font,
+beacon and third-party subresource the page loads.
+
+**Nothing that disguises the client.** `User-Agent` is refused by name, along
+with the headers the transport and the session own (`Host`, `Cookie`,
+`Content-Length`, the hop-by-hop set, and the `Sec-`/`Proxy-` prefixes). Values
+carrying CR, LF, or control characters are refused: that is request splitting.
+Forge identifies itself honestly and does not try to pass for a human browser.
+See [`bot-protection.md`](bot-protection.md) for the whole mechanism, including
+where the matching rule goes for each service.
+
 ## Testing against real applications
 
 The Operator fills forms with obviously synthetic values and never real

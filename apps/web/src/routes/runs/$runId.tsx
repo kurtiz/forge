@@ -485,7 +485,7 @@ function Timeline({
             <li key={event.id} className="rail relative flex gap-3 py-1.5 pl-5">
               <span
                 aria-hidden
-                className="absolute left-1 top-[0.5rem] size-1.5 rounded-full"
+                className="absolute left-[var(--rail-x)] top-[0.5rem] size-1.5 -translate-x-1/2 rounded-full"
                 style={{ background: EVENT_TONE[event.type] ?? "var(--forge-idle)" }}
               />
               <time

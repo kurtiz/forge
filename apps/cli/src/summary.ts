@@ -6,7 +6,7 @@
  * that are not bugs" in one place is what stops the two from disagreeing about
  * a run someone is being asked to trust.
  */
-import type { Finding, RunReport } from './types.js'
+import type { Finding, Remediation, RunReport } from './types.js'
 
 export type Tone = 'pass' | 'fail' | 'warn' | 'info'
 
@@ -19,6 +19,8 @@ export type Summary = {
   rows: Row[]
   bugs: Finding[]
   others: Finding[]
+  /** What to do about the finding that decided the run, when there is one. */
+  fix: Remediation | null
   /** The one-line answer, or null when the run never got far enough to have one. */
   verdict: { tone: Tone; text: string } | null
   url: string
@@ -41,6 +43,7 @@ export function summarise(report: RunReport): Summary {
       rows: [],
       bugs: [],
       others: [],
+      fix: report.remediation ?? null,
       verdict: null,
       url: report.url,
       replayUrl: run.replayUrl,
@@ -54,8 +57,18 @@ export function summarise(report: RunReport): Summary {
   /** "1 journeys failed" reads as a bug in the tool, not a bug in the app. */
   const journeyCount = (n: number) => `${n} journey${n === 1 ? '' : 's'}`
 
+  /*
+   * A run stopped at a bot challenge reached an edge, not an application, and
+   * every row below has to say so. "Application reachable" over a run that
+   * never loaded a page of it is the same false report the console used to
+   * give, moved into the CI log.
+   */
+  const blocked = findings.some((f) => f.failureClass === 'BOT_CHALLENGE')
+
   const rows: Row[] = [
-    { tone: 'pass', text: 'Application reachable' },
+    blocked
+      ? { tone: 'fail', text: 'Blocked before the application was reached' }
+      : { tone: 'pass', text: 'Application reachable' },
     {
       tone: 'pass',
       text:
@@ -63,7 +76,7 @@ export function summarise(report: RunReport): Summary {
           ? 'Browser session'
           : 'HTTP executor (no JavaScript)',
     },
-    { tone: 'pass', text: `${journeyCount(journeys.length)} discovered` },
+    { tone: blocked ? 'warn' : 'pass', text: `${journeyCount(journeys.length)} discovered` },
   ]
 
   if (passed.length > 0) {
@@ -87,18 +100,24 @@ export function summarise(report: RunReport): Summary {
     rows,
     bugs,
     others,
+    fix: report.remediation ?? null,
     verdict:
       bugs.length > 0
         ? {
             tone: 'fail',
             text: `${bugs.length} confirmed defect${bugs.length === 1 ? '' : 's'}.`,
           }
-        : passed.length > 0
-          ? { tone: 'pass', text: 'No confirmed defects.' }
-          : {
+        : blocked
+          ? {
               tone: 'warn',
-              text: 'No confirmed defects, but no journey was actually exercised.',
-            },
+              text: 'Nothing was verified: bot protection answered instead of the application.',
+            }
+          : passed.length > 0
+            ? { tone: 'pass', text: 'No confirmed defects.' }
+            : {
+                tone: 'warn',
+                text: 'No confirmed defects, but no journey was actually exercised.',
+              },
     url: report.url,
     replayUrl: run.replayUrl,
   }

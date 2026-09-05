@@ -49,7 +49,7 @@ APP_URL="http://localhost:3000"
 # and paste it as a single line with \n between the lines.
 # GITHUB_APP_ID="123456"
 # GITHUB_APP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
-# GITHUB_WEBHOOK_SECRET="a-long-random-string"
+# GITHUB_APP_WEBHOOK_SECRET="a-long-random-string"
 # The app's URL slug, so the console can link to its install page.
 # GITHUB_APP_SLUG="forge-verification"
 

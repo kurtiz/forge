@@ -14,6 +14,7 @@ import type {
   RunTrigger,
   Severity,
 } from '@/server/contracts'
+import type { RemediationOwner } from '@/server/domain/remediation'
 
 type Tone = 'pass' | 'fail' | 'warn' | 'live' | 'idle'
 
@@ -80,9 +81,18 @@ export const CLASSIFICATION_LABEL: Record<Classification, string> = {
   unknown: 'Unconfirmed',
 }
 
+/** Who has to act on a finding, in the words a reader needs. */
+export const REMEDIATION_OWNER_LABEL: Record<RemediationOwner, string> = {
+  application: 'Application code',
+  infrastructure: 'Infrastructure and edge configuration',
+  forge: "This project's verification settings",
+  none: 'Nothing to fix',
+}
+
 export const FAILURE_CLASS_LABEL: Record<FailureClass, string> = {
   APPLICATION_BUG: 'Application bug',
   AUTH_FAILURE: 'Authentication',
+  BOT_CHALLENGE: 'Bot protection',
   NETWORK_FAILURE: 'Network',
   TIMEOUT: 'Timeout',
   ENVIRONMENT_FAILURE: 'Environment',

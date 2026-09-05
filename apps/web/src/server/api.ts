@@ -13,6 +13,7 @@ import { z } from 'zod'
 import {
   createApiTokenInputSchema,
   createCredentialInputSchema,
+  createProjectHeaderInputSchema,
   createProjectInputSchema,
   createProjectJourneyInputSchema,
   createSampleValueInputSchema,
@@ -28,6 +29,7 @@ import {
   type Journey,
   type Project,
   type ProjectCredential,
+  type ProjectHeader,
   type ProjectJourney,
   type ProjectSampleValue,
   type Run,
@@ -42,10 +44,13 @@ import {
   type SessionUser,
 } from './auth'
 import { plannedExecutorKind } from './execution'
+import { remediationFor, type Remediation } from './domain/remediation'
 import {
   assertSafeTargetUrl,
   CredentialError,
   encryptCredential,
+  normaliseHeaderName,
+  normaliseHeaderValue,
   normaliseLoginPath,
   normaliseRepoUrl,
 } from './security'
@@ -76,6 +81,12 @@ export type SessionPayload = {
    */
   providers: { github: boolean; guest: boolean }
   /**
+   * Whether the GitHub App is configured. Pull request verification is built
+   * on it, so a deployment without it does not offer that feature anywhere in
+   * the console rather than describing something that cannot happen.
+   */
+  githubApp: boolean
+  /**
    * Whether this is a development deployment. Used only to explain a feature
    * that is switched off for want of configuration, which is a thing worth
    * saying to whoever is building the deployment and nobody else.
@@ -91,6 +102,7 @@ export const getSession = createServerFn({ method: 'GET' }).handler(
       github: githubLoginAvailable(),
       guest: guestAccessAvailable(),
     },
+    githubApp: githubConfigured(),
     development: env.FORGE_ENV === 'development',
   }),
 )
@@ -390,6 +402,37 @@ export const removeSampleValue = createServerFn({ method: 'POST' })
     return { ok: true }
   })
 
+/* ------------------------------------------------------- request headers */
+
+/**
+ * Stores one header Forge will send to this project's target.
+ *
+ * The value takes the same path as a stored password: validated, encrypted
+ * here, and never returned. A name that already exists has its value replaced,
+ * so rotating a secret is one paste rather than a delete and an add.
+ */
+export const addProjectHeader = createServerFn({ method: 'POST' })
+  .validator(createProjectHeaderInputSchema)
+  .handler(async ({ data }): Promise<ProjectHeader> => {
+    const me = await user()
+    await repo.assertProjectAccess(data.projectId, me.id)
+
+    return repo.upsertProjectHeader({
+      projectId: data.projectId,
+      name: normaliseHeaderName(data.name),
+      valueEncrypted: await encryptCredential(normaliseHeaderValue(data.value)),
+    })
+  })
+
+export const removeProjectHeader = createServerFn({ method: 'POST' })
+  .validator(z.object({ headerId: idSchema }))
+  .handler(async ({ data }) => {
+    const me = await user()
+    await repo.assertHeaderAccess(data.headerId, me.id)
+    await repo.deleteProjectHeader(data.headerId)
+    return { ok: true }
+  })
+
 /**
  * Deletes a project and everything it produced.
  *
@@ -413,6 +456,8 @@ export type ProjectPayload = {
   credentials: ProjectCredential[]
   plannedJourneys: ProjectJourney[]
   sampleValues: ProjectSampleValue[]
+  /** Names only. The values never leave the server. */
+  headers: ProjectHeader[]
 }
 
 export const getProject = createServerFn({ method: 'GET' })
@@ -420,15 +465,24 @@ export const getProject = createServerFn({ method: 'GET' })
   .handler(async ({ data }): Promise<ProjectPayload> => {
     const me = await user()
     const project = await repo.assertProjectAccess(data.projectId, me.id)
-    const [runs, schedule, credentials, plannedJourneys, sampleValues] =
+    const [runs, schedule, credentials, plannedJourneys, sampleValues, headers] =
       await Promise.all([
         repo.listRuns(project.id),
         monitor.getSchedule(project.id),
         repo.listProjectCredentials(project.id),
         repo.listProjectJourneys(project.id),
         repo.listProjectSampleValues(project.id),
+        repo.listProjectHeaders(project.id),
       ])
-    return { project, runs, schedule, credentials, plannedJourneys, sampleValues }
+    return {
+      project,
+      runs,
+      schedule,
+      credentials,
+      plannedJourneys,
+      sampleValues,
+      headers,
+    }
   })
 
 export const updateProject = createServerFn({ method: 'POST' })
@@ -611,6 +665,14 @@ export type FindingPayload = {
   steps: repo.JourneyStepRow[]
   evidence: Evidence[]
   fixAttempts: repo.FixAttemptRow[]
+  /**
+   * What to do about it, derived here rather than in the page.
+   *
+   * It is a function of the finding and its evidence, so it belongs next to
+   * them and not in a component - and computing it on the server keeps the
+   * whole rule set out of the browser bundle.
+   */
+  remediation: Remediation
 }
 
 export const getFinding = createServerFn({ method: 'GET' })
@@ -622,12 +684,16 @@ export const getFinding = createServerFn({ method: 'GET' })
       me.id,
     )
 
-    const [journeys, allSteps, evidence, fixAttempts] = await Promise.all([
-      repo.listJourneys(run.id),
-      repo.listJourneySteps(run.id),
-      listRunEvidence(run.id),
-      repo.listFixAttempts(finding.id),
-    ])
+    const [journeys, allSteps, evidence, fixAttempts, headers] =
+      await Promise.all([
+        repo.listJourneys(run.id),
+        repo.listJourneySteps(run.id),
+        listRunEvidence(run.id),
+        repo.listFixAttempts(finding.id),
+        // Names only, and only to shape the advice: a project that already
+        // sends a header gets told to write the rule, not to invent a secret.
+        repo.listProjectHeaders(project.id),
+      ])
 
     const journey = journeys.find((j) => j.id === finding.journeyId) ?? null
 
@@ -643,6 +709,17 @@ export const getFinding = createServerFn({ method: 'GET' })
         (e) => e.findingId === finding.id || e.journeyId === finding.journeyId,
       ),
       fixAttempts,
+      remediation: remediationFor({
+        finding,
+        run: { targetUrl: run.targetUrl, executor: run.executor },
+        journey: journey
+          ? { name: journey.name, goal: journey.goal, entryPath: journey.entryPath }
+          : null,
+        steps: journey
+          ? allSteps.filter((s) => s.journeyId === journey.id)
+          : [],
+        verificationHeaders: headers.map((header) => header.name),
+      }),
     }
   })
 

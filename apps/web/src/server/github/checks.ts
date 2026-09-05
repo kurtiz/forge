@@ -15,6 +15,7 @@
  */
 import { env } from 'cloudflare:workers'
 import type { Finding, Journey, Run } from '@/server/contracts'
+import type { RemediationStep } from '@/server/domain/remediation'
 import { installationFetch } from './app'
 import {
   renderCheckReport as render,
@@ -29,6 +30,8 @@ export function renderCheckReport(input: {
   run: Run
   journeys: Journey[]
   findings: Finding[]
+  steps?: readonly (RemediationStep & { journeyId: string })[]
+  verificationHeaders?: readonly string[]
 }): CheckReport {
   return render({ ...input, baseUrl: env.APP_URL || 'http://localhost:3000' })
 }

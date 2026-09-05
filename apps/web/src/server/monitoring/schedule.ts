@@ -49,7 +49,16 @@ export function shouldNotify(input: {
   return { notify: false, reason: failing ? 'still_failing' : 'steady' }
 }
 
-/** The message body a webhook receives. Slack renders `text` as-is. */
+/**
+ * The message body a webhook receives. Slack renders `text` as-is.
+ *
+ * `fix` is the one line of it that tells the reader what to do rather than what
+ * happened. A monitor firing at 03:00 about a target that answers a bot
+ * challenge is otherwise a dead end: the summary says nothing was verified, and
+ * whoever is holding the pager has to open the console to find out why and
+ * whose problem it is. The full brief stays behind the link - a chat message is
+ * not the place for two kilobytes of prompt.
+ */
 export function notificationText(input: {
   reason: NotificationDecision['reason']
   projectName: string
@@ -57,6 +66,7 @@ export function notificationText(input: {
   summary: string
   runUrl: string
   consecutiveFailures: number
+  fix?: { headline: string; url: string } | null
 }): string {
   const head =
     input.reason === 'recovered'
@@ -65,5 +75,11 @@ export function notificationText(input: {
         ? `❌ ${input.projectName} is still failing (${input.consecutiveFailures} runs in a row)`
         : `❌ ${input.projectName} failed verification`
 
-  return [head, input.targetUrl, input.summary, input.runUrl].join('\n')
+  const lines = [head, input.targetUrl, input.summary]
+  if (input.fix) {
+    lines.push(`How to fix: ${input.fix.headline}`, input.fix.url)
+  }
+  lines.push(input.runUrl)
+
+  return lines.join('\n')
 }

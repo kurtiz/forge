@@ -20,6 +20,10 @@ import type {
 } from '@/server/execution/types'
 import { Budget } from '@/server/domain/budget'
 import { isAuthJourney } from '@/server/domain/analysis'
+import {
+  CHALLENGE_VENDOR_LABEL,
+  detectBotChallenge,
+} from '@/server/domain/challenge'
 
 export type Credentials = {
   loginPath: string
@@ -169,6 +173,23 @@ export async function signIn(
     return {
       ok: false,
       detail: `Could not open ${credentials.loginPath}: ${landing.detail}`,
+      landing: null,
+    }
+  }
+
+  /*
+   * Checked before the fields, because it explains their absence.
+   *
+   * A challenge page has no password field, and saying so - "no password field
+   * at /login, single sign-on is not supported" - sends whoever reads it to
+   * look at an authentication setup that was never the problem. The login form
+   * is behind the challenge, intact, and unreachable.
+   */
+  const challenge = detectBotChallenge(landing.observation)
+  if (challenge) {
+    return {
+      ok: false,
+      detail: `${CHALLENGE_VENDOR_LABEL[challenge.vendor]} bot protection answered ${credentials.loginPath} with a challenge ("${challenge.marker}") instead of the login form, so no credentials were submitted.`,
       landing: null,
     }
   }
