@@ -61,7 +61,7 @@ The rule the whole system is built around:
              (CDP over WS)        (HTMLRewriter)
 ```
 
-![Forge architecture]([[https://user-images.githubusercontent.com/1075392/222122222-22022220-2192-420a-8222-222222222222.png](https://raw.githubusercontent.com/kurtiz/forge/refs/heads/main/docs/architecture.png)](https://raw.githubusercontent.com/kurtiz/forge/refs/heads/main/docs/architecture.png))
+![Forge architecture](https://raw.githubusercontent.com/kurtiz/forge/refs/heads/main/docs/architecture.png)
 
 Three clean layers:
 
