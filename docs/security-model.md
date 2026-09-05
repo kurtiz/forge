@@ -6,7 +6,9 @@ Forge points a browser at a URL a stranger supplied, executes a repository a
 stranger supplied, and feeds both into a model. That produces four real threats,
 and each one is handled outside the model. Opening the product to a CLI and to
 GitHub adds a fifth: two new ways to reach it that do not carry a session
-cookie.
+cookie. Deploying it publicly adds a sixth, which is not about any one door but
+about all of them: every entrance above is open to anyone who can reach the
+origin, as often as they care to knock.
 
 ## 1. Server-side request forgery
 
@@ -98,6 +100,9 @@ Limits are architecture, not an optimisation:
 accept an idempotency key so a retried request cannot create a second paid
 session.
 
+Every number here bounds one run. How many runs may be started is a separate
+question, answered below.
+
 ## 5. Credentials that are not a browser session
 
 Two non-cookie doors exist, and each has one thing standing behind it.
@@ -143,6 +148,52 @@ making the request.
 **One commit, one run.** Every run started from GitHub carries an idempotency
 key derived from the commit, so the several events describing one deployment
 cannot multiply into several billable sessions.
+
+## 6. Doors that are open to everyone
+
+Everything above assumes a caller doing one thing at a time. A public deployment
+does not get to assume that. The sign-in form checks as many passwords as it is
+asked to. The REST API reads the database to resolve a token before it knows
+whether the caller is anybody. A run costs a Solari session and a handful of
+model calls, charged to whoever started it.
+
+Three limits, one per door. They live in
+[`src/server/security/rate-limit.ts`](../apps/web/src/server/security/rate-limit.ts),
+and the bindings that count them are declared in `wrangler.jsonc`.
+
+| Door | Counted by | Limit |
+|---|---|---|
+| `/api/auth/sign-in`, `/api/auth/sign-up` | address | 20 a minute |
+| `/api/v1/*`, before the token is resolved | address | 300 a minute |
+| Starting a run | account | 10 a minute |
+
+The keys differ because the threats differ. A password guess is bounded by where
+it comes from, and the email in it is the attacker's to choose, so the address is
+the key. Spending money is bounded by who pays, so the account is.
+
+Two things are deliberately not limited. Session reads are not: the console makes
+them on nearly every navigation, and they tell an attacker nothing they did not
+already know. Scheduled and pull request runs are not: their rate is already
+bounded by the cadence a project chose and by how often someone pushes a branch,
+and refusing one would read as Forge missing a deployment rather than as a limit
+doing its job.
+
+Counting is Cloudflare's rate limiting binding, which counts per colo rather than
+globally, so the real ceiling is somewhat higher than the number configured. That
+is the right trade for limits meant to stop abuse rather than to meter a quota: an
+approximate answer that costs nothing beats an exact one that needs a round trip
+to storage on every request.
+
+A limiter that is absent or failing allows the request, and logs that it did. A
+limiter is a guard, not a gate: refusing everything because the service behind
+the count is unreachable would turn a rate limiting outage into a Forge outage,
+which is the worse of the two failures.
+
+The refusal is a 429 carrying `Retry-After`, which is worth more than its
+message: it is what turns a retry loop in someone's CI script into a wait rather
+than into more of the traffic that caused the limit. What it does not carry is
+which limit was hit or how much of it is left, because that turns the limiter
+into an oracle for how hard it can be pushed.
 
 ## Credentials
 

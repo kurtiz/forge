@@ -52,6 +52,8 @@ function ProjectPage() {
   const router = useRouter()
   const confirm = useConfirm()
   const [busy, setBusy] = useState(false)
+  /** Why the last attempt to start a run did not start one. */
+  const [runError, setRunError] = useState<string | null>(null)
   const [previewTemplate, setPreviewTemplate] = useState(
     project.previewUrlTemplate ?? '',
   )
@@ -61,9 +63,18 @@ function ProjectPage() {
 
   async function run() {
     setBusy(true)
+    setRunError(null)
     try {
       const created = await startVerification({ data: { projectId: project.id } })
       await router.navigate({ to: '/runs/$runId', params: { runId: created.id } })
+    } catch (failure) {
+      // A rate limit is the expected one, and it is worth reading: the button
+      // otherwise looks broken to whoever pressed it once too often.
+      setRunError(
+        failure instanceof Error
+          ? failure.message
+          : 'Could not start a verification.',
+      )
     } finally {
       setBusy(false)
     }
@@ -188,6 +199,12 @@ function ProjectPage() {
             </>
           }
         />
+
+        {runError ? (
+          <p role="alert" className="m-0 text-sm text-[var(--forge-fail)]">
+            {runError}
+          </p>
+        ) : null}
 
         <ExecutorNotice executor={session.executor} />
 

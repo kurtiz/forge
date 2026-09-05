@@ -9,7 +9,7 @@
 import { env } from 'cloudflare:workers'
 import type { Run } from '@/server/contracts'
 import { plannedExecutorKind } from '@/server/execution'
-import { assertSafeTargetUrl } from '@/server/security'
+import { assertSafeTargetUrl, limitRunStart } from '@/server/security'
 import * as repo from './repository'
 
 function stub(runId: string): DurableObjectStub {
@@ -34,6 +34,17 @@ export async function startRun(input: {
   } | null
 }): Promise<Run> {
   const project = await repo.assertProjectAccess(input.projectId, input.userId)
+
+  /*
+   * A run buys a browser session and model calls, so the account that will be
+   * billed for them is what the limit counts. Machine triggers are exempt:
+   * their rate is already bounded by the cadence a project chose and by how
+   * often a branch is pushed, and refusing one of those would read as Forge
+   * missing a deployment rather than as a limit doing its job.
+   */
+  if (input.trigger !== 'scheduled' && input.trigger !== 'pull_request') {
+    await limitRunStart(input.userId)
+  }
 
   // Re-validated at run time as well as at project creation, because the stored
   // value could have been written before a rule changed.

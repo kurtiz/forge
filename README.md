@@ -428,6 +428,9 @@ pnpm db:migrate:remote
 pnpm deploy
 ```
 
+The rate limiters need nothing created: their namespace ids are numbers local to
+the Worker, declared in `wrangler.jsonc` and bound on deploy.
+
 Keep development, staging, and production on separate D1 databases, R2 buckets,
 and Solari keys. A development run must never be able to reach production data.
 
@@ -685,6 +688,17 @@ a `finally`, including on cancellation, because a leaked browser session bills
 for as long as it lives. Expensive operations accept an idempotency key so a
 retried request cannot create a second paid session.
 
+**Every public door is rate limited.** Sign-in and sign-up are capped at 20 a
+minute per address, the REST API at 300 a minute per address counted before the
+token is resolved, and starting a run at 10 a minute per account. The keys
+differ because the threats do: a password guess is bounded by where it comes
+from, spending money by who pays for it. Session reads are not limited, and
+neither are scheduled or pull request runs, whose rate is already bounded by the
+cadence a project chose and by how often a branch is pushed. A refusal is a 429
+with `Retry-After`; a limiter that is absent or failing allows the request and
+logs that it did, because a rate limiting outage should not become a Forge
+outage.
+
 **Anonymous accounts are real accounts, in development only.** The anonymous
 plugin creates an owned user row, so every authorization check behaves
 identically for guests, and signing up later migrates their projects across
@@ -758,6 +772,8 @@ Shipped:
   transitions rather than on every tick
 - A REST API and personal access tokens, and a datapoint per run in Analytics
   Engine to say whether the agent is getting better or worse
+- Rate limits on the three doors a public deployment leaves open: sign-in,
+  the REST API, and starting a run
 
 Next, roughly in order:
 

@@ -43,6 +43,8 @@ function FindingPage() {
   const { session } = Route.useRouteContext()
   const router = useRouter()
   const [busy, setBusy] = useState<'verify' | 'dismiss' | null>(null)
+  /** Why the last attempt to re-run the journey did not start one. */
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const rate =
     finding.reproductionAttempts > 0
@@ -51,9 +53,16 @@ function FindingPage() {
 
   async function runFixCheck() {
     setBusy('verify')
+    setActionError(null)
     try {
       const created = await verifyFix({ data: { findingId: finding.id } })
       await router.navigate({ to: '/runs/$runId', params: { runId: created.id } })
+    } catch (failure) {
+      setActionError(
+        failure instanceof Error
+          ? failure.message
+          : 'Could not start the verification run.',
+      )
     } finally {
       setBusy(null)
     }
@@ -128,6 +137,12 @@ function FindingPage() {
             ) : null
           }
         />
+
+        {actionError ? (
+          <p role="alert" className="m-0 mt-4 text-sm text-[var(--forge-fail)]">
+            {actionError}
+          </p>
+        ) : null}
 
         {verified ? (
           <div className="flex items-start gap-3 rounded-lg border border-kumo-hairline bg-kumo-recessed px-4 py-3.5">
