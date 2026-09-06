@@ -14,14 +14,13 @@
  * Open to signed-out visitors. Someone evaluating Forge against a target
  * behind Cloudflare hits this question before they have an account.
  */
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import {
-  ArrowLeftIcon,
   LockKeyIcon,
   ShieldWarningIcon,
   WarningIcon,
 } from '@phosphor-icons/react'
-import { Page, PageHeader, Section, TopBar } from '@/components/app/shell'
+import { BackLink, Page, PageHeader, Section, TopBar } from '@/components/app/shell'
 
 export const Route = createFileRoute('/docs/request-headers')({
   head: () => ({
@@ -101,13 +100,12 @@ function RequestHeadersDoc() {
       <Page>
         <PageHeader
           above={
-            <Link
+            <BackLink
               to={session.user ? '/dashboard' : '/'}
-              className="inline-flex items-center gap-1.5 text-xs text-kumo-subtle no-underline hover:text-kumo-strong"
+              className="text-xs text-kumo-subtle"
             >
-              <ArrowLeftIcon size={12} />
               {session.user ? 'Verification' : 'Forge'}
-            </Link>
+            </BackLink>
           }
           title="Request headers"
           description="Name and value pairs a run attaches to every request it makes to one project's target. They exist so a verifier can be let past a bot challenge or an access gate without that gate being weakened for anyone else."

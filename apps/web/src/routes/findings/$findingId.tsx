@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { createFileRoute, Link, redirect, useRouter } from '@tanstack/react-router'
 import { CheckCircleIcon, SealCheckIcon, XCircleIcon } from '@phosphor-icons/react'
 import { Button } from '@cloudflare/kumo/components/button'
-import { Page, PageHeader, Section, Stat, TopBar } from '@/components/app/shell'
+import { BackLink, Page, PageHeader, Section, Stat, TopBar } from '@/components/app/shell'
 import {
   ClassificationPill,
   FAILURE_CLASS_LABEL,
@@ -87,13 +87,12 @@ function FindingPage() {
         <PageHeader
           above={
             <span className="flex flex-wrap items-center gap-2 text-xs text-kumo-subtle">
-              <Link
+              <BackLink
                 to="/projects/$projectId"
                 params={{ projectId: project.id }}
-                className="no-underline hover:text-kumo-strong"
               >
                 {project.name}
-              </Link>
+              </BackLink>
               <span>/</span>
               <Link
                 to="/runs/$runId"

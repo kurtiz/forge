@@ -5,12 +5,14 @@
  * dense, so the shell stays out of the way: no sidebar, no breadcrumb trail
  * deeper than the object being viewed.
  */
-import { Link } from "@tanstack/react-router";
+import { createLink, Link } from "@tanstack/react-router";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { Button } from "@cloudflare/kumo/components/button";
 import { AccountMenu } from "@/components/app/account-menu";
 import { ThemeToggle } from "@/components/theme";
 import type { SessionUser } from "@/server/auth";
-import type { ReactNode } from "react";
+import { forwardRef } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 /**
  * The mark: an F, and a tick in the accent.
@@ -145,6 +147,36 @@ export function Page({
 }
 
 /** Page header: title, optional description, optional actions on the right. */
+/**
+ * The way one level up, in `PageHeader`'s `above` slot.
+ *
+ * The label on its own is the name of the parent object, which reads as a
+ * caption rather than as somewhere to go - a run page saying the project's name
+ * above the title looks like it is telling you which project you are in, and it
+ * is, but it is also the way out. The arrow is the part that says so.
+ *
+ * Built with `createLink` rather than wrapping `Link`, so `to` and `params`
+ * keep the router's type inference at every call site. The arrow is hidden from
+ * assistive technology: the label already names the destination, and "left
+ * arrow Verification" names it worse.
+ */
+const BackAnchor = forwardRef<HTMLAnchorElement, ComponentPropsWithoutRef<"a">>(
+  function BackAnchor({ children, className, ...props }, ref) {
+    return (
+      <a
+        ref={ref}
+        className={`inline-flex items-center gap-1.5 no-underline hover:text-kumo-strong ${className ?? ""}`}
+        {...props}
+      >
+        <ArrowLeftIcon size={12} aria-hidden />
+        {children}
+      </a>
+    );
+  },
+);
+
+export const BackLink = createLink(BackAnchor);
+
 export function PageHeader({
                              title,
                              description,

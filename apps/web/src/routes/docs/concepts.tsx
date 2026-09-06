@@ -31,11 +31,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { ArrowLeftIcon } from '@phosphor-icons/react'
 import { Empty } from '@cloudflare/kumo/components/empty'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Input } from '@cloudflare/kumo/components/input'
-import { Page, PageHeader, Section, TopBar } from '@/components/app/shell'
+import { BackLink, Page, PageHeader, Section, TopBar } from '@/components/app/shell'
 import {
   ClassificationPill,
   JourneyStatusPill,
@@ -814,13 +813,12 @@ function ConceptsDoc() {
           <div className="min-w-0">
             <PageHeader
               above={
-                <Link
+                <BackLink
                   to={session.user ? '/dashboard' : '/'}
-                  className="inline-flex items-center gap-1.5 text-xs text-kumo-subtle no-underline hover:text-kumo-strong"
+                  className="text-xs text-kumo-subtle"
                 >
-                  <ArrowLeftIcon size={12} />
                   {session.user ? 'Verification' : 'Forge'}
-                </Link>
+                </BackLink>
               }
               title="Concepts"
               description="What Forge is doing when it runs, and what every word on a run page means. The vocabulary is deliberately narrow: a journey is not a page, a finding is not a failure, and flaky is a count rather than an impression."

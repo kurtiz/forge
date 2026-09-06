@@ -15,7 +15,7 @@ import {
   StopCircleIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@cloudflare/kumo/components/button";
-import { Page, PageHeader, Section, TopBar } from "@/components/app/shell";
+import { BackLink, Page, PageHeader, Section, TopBar } from '@/components/app/shell';
 import {
   isRunLive,
   JourneyStatusPill,
@@ -109,13 +109,13 @@ function RunPage() {
       <Page wide>
         <PageHeader
           above={
-            <Link
+            <BackLink
               to="/projects/$projectId"
               params={{ projectId: project.id }}
-              className="text-xs text-kumo-subtle no-underline hover:text-kumo-strong"
+              className="text-xs text-kumo-subtle"
             >
               {project.name}
-            </Link>
+            </BackLink>
           }
           title={
             <span className="flex flex-wrap items-center gap-3">

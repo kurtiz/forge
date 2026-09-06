@@ -10,7 +10,7 @@ import { PlayIcon, TrashIcon } from '@phosphor-icons/react'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input } from '@cloudflare/kumo/components/input'
-import { Page, PageHeader, Section, TopBar } from '@/components/app/shell'
+import { BackLink, Page, PageHeader, Section, TopBar } from '@/components/app/shell'
 import { RunStatusPill, TriggerTag } from '@/components/app/status'
 import { useConfirm } from '@/components/app/confirm'
 import { RelativeTime } from '@/components/app/relative-time'
@@ -114,12 +114,9 @@ function ProjectPage() {
       <Page wide>
         <PageHeader
           above={
-            <Link
-              to="/dashboard"
-              className="text-xs text-kumo-subtle no-underline hover:text-kumo-strong"
-            >
+            <BackLink to="/dashboard" className="text-xs text-kumo-subtle">
               Verification
-            </Link>
+            </BackLink>
           }
           title={project.name}
           description={
