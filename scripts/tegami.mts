@@ -85,8 +85,14 @@ const paper = tegami({
       createTags: false,
     }),
   ],
-  /* The Worker is deployed, not released. Only the CLI is versioned. */
-  ignore: ["@forge/web"],
+  /*
+   * Only the CLI is versioned. The Worker is deployed rather than released, and
+   * the film is an artifact this repository builds rather than something anyone
+   * installs -- neither has a version a reader could act on. Being `private`
+   * exempts nothing, which is the whole reason `@forge/cli` can be versioned
+   * without ever reaching a registry, so both have to be named here.
+   */
+  ignore: ["@forge/web", "@forge/video"],
 });
 
 await runCli(paper);

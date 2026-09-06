@@ -39,13 +39,26 @@ Rules:
 ## In this repository
 
 `@forge/cli` is the only versioned package. `@forge/web` is deployed to
-Cloudflare rather than released, and its version is never bumped.
+Cloudflare rather than released, and `@forge/video` renders a film this
+repository builds rather than something anyone installs. Both are named in the
+`ignore` list in `scripts/tegami.mts`, because being `private` exempts nothing --
+that is exactly how `@forge/cli` is versioned without ever reaching a registry.
+`video/CHANGELOG.md` and the version in `video/package.json` are what is left of
+the period before that list was right; neither is bumped now.
 
 Most changes need no changelog file at all: versions are derived from
 conventional commit subjects since the last release tag, so a `feat(cli):` or
 `fix(cli):` commit is enough on its own. Write a `.tegami/*.md` file when the
 release note needs more than a commit subject can carry, or when the bump the
 commits imply is not the bump the change deserves.
+
+The scope is what does the work, and only the scope. Tegami resolves a commit to
+a package by the name in the parentheses -- never by the files the commit
+touched -- so a bare `feat:` resolves to no package at all and is dropped
+silently, however much of `apps/cli` it rewrote. A change to the CLI that goes in
+under `feat:` or under another package's scope will not be released, and nothing
+reports that it was skipped. When commits have already landed that way, a
+`.tegami/*.md` file naming the package is how the release is recovered.
 
 Nothing is published to a registry. `@forge/cli` is `private`, so Tegami
 versions it and writes its changelog while the release workflow tags the
