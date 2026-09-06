@@ -12,7 +12,7 @@
  * action, so the run is one click away rather than automatic.
  */
 import { useState } from 'react'
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+import { createFileRoute, Link, redirect, useRouter } from '@tanstack/react-router'
 import { ArrowRightIcon } from '@phosphor-icons/react'
 import { z } from 'zod'
 import { Button } from '@cloudflare/kumo/components/button'
@@ -118,7 +118,21 @@ function NewProject() {
           <Input
             label="GitHub repository"
             placeholder="https://github.com/owner/repo"
-            description="Optional. A public repository lets Forge connect a runtime failure to the source that caused it."
+            description={
+              <>
+                Optional, and public repositories only. Forge clones it into a
+                disposable sandbox to connect a runtime failure to its source,
+                reads it without running it, and destroys the clone when the run
+                ends.{' '}
+                <Link
+                  to="/docs/concepts"
+                  hash="source-investigation"
+                  className="link"
+                >
+                  What investigation does
+                </Link>
+              </>
+            }
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.currentTarget.value)}
           />

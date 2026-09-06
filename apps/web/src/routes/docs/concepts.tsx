@@ -449,7 +449,7 @@ const GROUPS: Group[] = [
           'The mechanic saying "I think it is the alternator". You tow the car either way; the guess only changes what you look at first.',
         example:
           'Proposed: the coupon handler dereferences a null discount record. Files: src/api/checkout/coupon.ts, src/db/discounts.ts. Confidence 0.6.',
-        see: ['confidence', 'fix-instructions'],
+        see: ['confidence', 'fix-instructions', 'source-investigation'],
       },
       {
         id: 'fix-instructions',
@@ -616,6 +616,17 @@ const GROUPS: Group[] = [
         example:
           'A React application verified by the fallback reports thin results, and the run says so rather than letting a thin report look like a thin application.',
         see: ['run', 'evidence'],
+      },
+      {
+        id: 'source-investigation',
+        term: 'Source investigation',
+        definition:
+          'How a runtime failure gets a file and a line. Where a project connects a public repository, Forge clones it into a sandbox - a disposable machine, rented for the length of one run and destroyed with it - and searches the source for the terms the failure produced. It only reads: no dependency install, no build, no test run, and nothing in the repository is ever executed. What survives the run is the matched paths, the excerpts and the commit they were read at.',
+        analogy:
+          'Pulling the maintenance log after the breakdown rather than driving the car again. Reading it cannot break anything further.',
+        example:
+          'A 500 on /cart carrying "discount is null" leads to src/api/checkout/coupon.ts:41. With no repository connected, the finding keeps its runtime evidence and says investigation did not run.',
+        see: ['root-cause', 'untrusted-observation', 'budget'],
       },
       {
         id: 'budget',
