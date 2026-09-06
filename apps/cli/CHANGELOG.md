@@ -1,3 +1,39 @@
+## @forge/cli@0.5.0
+
+### Say how to fix the finding that decided the run
+
+A verification that fails in CI used to end at the verdict. Whoever was on
+shift got told which journey broke and had to open the finding page to learn
+what to do about it.
+
+The report now ends with `How to fix`: the headline, who owns the change, and
+the steps as numbered lines. Every finding carries them, derived by rule rather
+than written by a model, so the same failure reads the same way twice.
+
+The agent brief is deliberately not printed by default. It runs to a couple of
+kilobytes, and a couple of kilobytes in front of a reader every run is how a CI
+log stops being read at all -- so the default names where the prompt is, and
+`--fix` prints it into the log, verbatim and unindented, for piping straight
+into a coding agent.
+
+### Stop calling a blocked run a reachable application
+
+A target behind a bot challenge answers HTTP 200, so a run against one used to
+report success against the interstitial: `Application reachable`, journeys
+discovered from the challenge screen's own words, and no confirmed defects.
+Every line was true of the interstitial and none of it was true of the
+application.
+
+A run stopped at a challenge now says `Blocked before the application was
+reached`, marks the discovered journeys as a warning rather than a pass, and
+gives a verdict saying no journey was exercised instead of reporting a clean
+run. The finding names the service in the way, and its fix instructions say how
+to let a verifier through.
+
+### Drop em dashes from the terminal copy
+
+`--help` and the run status line used them. They are gone from both.
+
 ## @forge/cli@0.4.0
 
 ### Install the CLI without a dependency tree
