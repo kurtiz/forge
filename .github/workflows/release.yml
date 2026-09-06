@@ -43,6 +43,19 @@ jobs:
       # unreleased conventional commits or .tegami/*.md changelog files. When
       # there is nothing pending it does nothing, and the release job below
       # decides whether the merged version still needs cutting.
+      #
+      # That pull request never runs CI, and the red X on it is not a broken
+      # build. GitHub does not raise workflow events for anything done with
+      # GITHUB_TOKEN, so the check suite is created and no job is ever
+      # scheduled; closing or merging the pull request ends the pending run and
+      # records it as a failure. Every Version Packages pull request in this
+      # repository looks failed for that reason, the merged ones included.
+      #
+      # Left alone on purpose. Running CI on the bump would mean a personal
+      # access token with write access to the repository, living as a secret
+      # for as long as the release workflow does. What it would check is
+      # version numbers and changelog prose that Tegami wrote from commits that
+      # already passed CI on main.
       - name: Version packages
         run: pnpm tegami ci
         env:
