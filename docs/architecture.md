@@ -243,6 +243,70 @@ forms, and submits them. It cannot run JavaScript, and it says so rather than
 pretending: activating a scripted control returns `ok: false` with an
 explanation instead of a fabricated result.
 
+## Investigation
+
+`SourceInvestigator` is the sibling interface. The browser says what the
+application did; this says which source could explain it.
+
+```ts
+interface SourceInvestigator {
+  readonly kind: 'solari-sandbox'
+  readonly sandboxId: string | null
+  readonly elapsedSeconds: number
+  investigate(request: InvestigationRequest): Promise<SourceInsight>
+  close(): Promise<void>
+}
+```
+
+There is deliberately no `write`, `exec`, or `command` on it. Investigation is
+read-only, so the type refuses mutation rather than a prompt discouraging it.
+
+A Worker has no filesystem and cannot run `git`, so the repository is never
+cloned on Forge's side. `SolariSandboxInvestigator` rents a disposable microVM
+over Solari's REST gateway — `POST /sandboxes`, `POST /sandboxes/:id/exec`,
+`DELETE /sandboxes/:id` — and clones into `/workspace/repo` there. Unlike the
+browser, this needs no SDK and no WebSocket: every step is one request and one
+response, which is what lets it run on Workers as-is.
+
+Five commands run against the clone, and that is the whole vocabulary:
+
+| Command | For |
+|---|---|
+| `git clone --depth 1 --single-branch` | the working tree, without the history |
+| `git ls-files` | tracked source only, so `node_modules` never enters the picture |
+| `cat package.json` | framework and package manager detection |
+| `grep -rnIF` | the search terms, fixed-string and binary-skipping |
+| `git rev-parse HEAD` | the commit the evidence was read at |
+
+No install, no build, no test run. A malicious repository has nothing to execute.
+
+Each is sent as a command plus an argument array, never a shell string. The
+search terms are built from page content and console output, which the target
+application controls; passing those through a shell would make them a command
+injection.
+
+Investigation is lazy and per-failure. It starts only once a journey has failed,
+and only if the project carries a repository URL and the sandbox budget has
+seconds left. The sandbox is created on the first failure that needs one and
+reused for the rest of the run; the clone is done once and reused too, keyed on
+the URL.
+
+It never fails a run. A sandbox that will not start, a repository that will not
+clone, and a budget that is spent all degrade the finding to runtime-only and
+emit `investigation.skipped` or `investigation.failed`. A finding stands on its
+runtime evidence; source is the layer on top of one that already holds.
+
+Unlike the executors, there is no degraded fallback. Without a `SOLARI_API_KEY`
+the browser drops to `FetchBrowserExecutor`, but `createInvestigator` returns
+`null` and the run reports investigation as skipped. Reading a repository
+without cloning it would mean a different provider and a different fidelity
+story, and claiming source links from a weaker method is worse than saying it
+did not run.
+
+Release is unconditional, in the engine's `finally`, because a leaked microVM
+bills for as long as it lives. The sandbox carries a ten-minute timeout of its
+own as well, so a Worker that dies without cleaning up cannot leave one running.
+
 ## Data
 
 D1 holds relational state. R2 holds artifacts. D1 stores only R2 keys and

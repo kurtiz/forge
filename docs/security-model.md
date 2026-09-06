@@ -2,7 +2,7 @@
 
 ## Threats this system actually has
 
-Forge points a browser at a URL a stranger supplied, executes a repository a
+Forge points a browser at a URL a stranger supplied, reads a repository a
 stranger supplied, and feeds both into a model. That produces four real threats,
 and each one is handled outside the model. Opening the product to a CLI and to
 GitHub adds a fifth: two new ways to reach it that do not carry a session
@@ -194,6 +194,38 @@ message: it is what turns a retry loop in someone's CI script into a wait rather
 than into more of the traffic that caused the limit. What it does not carry is
 which limit was hit or how much of it is left, because that turns the limiter
 into an oracle for how hard it can be pushed.
+
+## What leaves Cloudflare
+
+Two external systems see run data, and it is worth saying plainly which.
+
+**Solari sees the target application and the repository.** The browser renders
+the target inside a Solari session, so every page a journey reaches — including
+whatever a signed-in test account can reach — is rendered on their
+infrastructure. The investigator clones the repository into a Solari microVM at
+`/workspace/repo`. Source code is sent to a third party. That is the cost of
+having a filesystem at all from a Worker, and it is a deliberate trade rather
+than an implementation detail.
+
+The restriction in section 1 is what bounds it: repository URLs are public
+GitHub only, so what reaches the sandbox is already public. A private repository
+cannot be attached. That is a smaller product and a much smaller disclosure.
+
+Neither the clone nor the session outlives the run. The microVM is released in
+the engine's `finally` and expires on its own after ten minutes regardless. Only
+the results come back — matched paths, line excerpts, and the commit SHA — and
+only those are written to D1.
+
+**The model provider sees observations.** Condensed page text, headings, element
+names, console and network errors, and matched source excerpts go into prompts.
+Whole files do not: the investigator returns matches, not contents.
+
+A stored test-account password is the one secret that reaches the target
+application, and it gets there by being typed into a login form inside the
+Solari session, like any other keystroke in the run. It is never shown to the
+model, never written to an event, trace, or artifact, and never returned by the
+API. The same holds for verification header values. See below for the four rules
+that keep it that way.
 
 ## Credentials
 
